@@ -172,8 +172,8 @@ fn blocked_applies(
 }
 
 /// Whether the lane-parallel `gemv_kc` kernel applies: `b` contiguous along `k`
-/// with a few rows of `a`, so a slice of lanes walks it side by side for one
-/// output column — or, an `m = 1` product too thin to fill the plain kernel's
+/// with a few rows of `a` and `k` of at least `MATMUL_GEMV_KC_MIN_K`, so a slice of
+/// lanes walks it side by side for one output column — or, an `m = 1` product too thin to fill the plain kernel's
 /// grid, whatever stride `b` has, since a grid of lane reductions beats a
 /// handful of serial workgroups.
 fn gemv_kc_applies(
@@ -187,7 +187,7 @@ fn gemv_kc_applies(
     !gemv_small
         && prefix > 0
         && n > 0
-        && ((1..=MATMUL_GEMV_KC_MAX_M).contains(&m) && b_k_stride == 1
+        && ((1..=MATMUL_GEMV_KC_MAX_M).contains(&m) && b_k_stride == 1 && k >= MATMUL_GEMV_KC_MIN_K
             || (m == 1 && k >= 256 && prefix * n.div_ceil(MATMUL_GEMV_WG as usize) < 16))
 }
 
@@ -506,6 +506,9 @@ const MATMUL_GEMV_KC_COLS: u32 = 8;
 const MATMUL_GEMV_KC_LANES: u32 = 32;
 /// Rows of `a` the lane-parallel GEMV kernel serves, each `b` load feeding all of them.
 const MATMUL_GEMV_KC_MAX_M: usize = 8;
+/// Shortest `k` the lane-parallel GEMV kernel takes for a `b` contiguous along `k`: below it
+/// a product is too small for coalescing to pay for the per-column reduction.
+const MATMUL_GEMV_KC_MIN_K: usize = 128;
 
 /// Rows one `n = 1` workgroup owns, and the `k` slice it stages for them.
 pub const MATMUL_GEMV_N_WG: u32 = 64;
@@ -1573,20 +1576,20 @@ mod tests {
     }
 
     /// Products the k-contiguous GEMV kernel takes, `b` transposed so its rows run along `k`:
-    /// one to eight rows of `a`, `k` and `n` off the lane and column counts, a prefix, `a`
-    /// and `c` transposed, f16 and a bias epilogue.
+    /// one to eight rows of `a`, `k` past the kernel's minimum and `k`, `n` off the lane and
+    /// column counts, a prefix, `a` and `c` transposed, f16 and a bias epilogue.
     #[test]
     fn matmul_gemv_k_contiguous_matches_cpu() -> TractResult<()> {
         use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
         for (prefix, m, k, n, ta, tc, f16_, bias) in [
-            (1usize, 1usize, 70usize, 13usize, false, false, false, false),
-            (1, 3, 70, 13, false, false, false, false),
+            (1usize, 1usize, 170usize, 13usize, false, false, false, false),
+            (1, 3, 170, 13, false, false, false, false),
             (1, 8, 1000, 37, false, false, false, false),
-            (3, 4, 33, 9, false, false, false, false),
-            (1, 4, 70, 13, true, false, false, false),
-            (1, 4, 70, 13, false, true, false, false),
-            (1, 2, 40, 21, false, false, true, false),
-            (1, 4, 70, 13, false, false, false, true),
+            (3, 4, 133, 9, false, false, false, false),
+            (1, 4, 170, 13, true, false, false, false),
+            (1, 4, 170, 13, false, true, false, false),
+            (1, 2, 130, 21, false, false, true, false),
+            (1, 4, 170, 13, false, false, false, true),
         ] {
             let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
             let a_shape = [prefix, if ta { k } else { m }, if ta { m } else { k }];
