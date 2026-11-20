@@ -1,5 +1,5 @@
 use tract_core::internal::*;
-use tract_core::ops::array::{MultiBroadcastTo, Slice, Topk, TypedConcat};
+use tract_core::ops::array::{MultiBroadcastTo, Slice, Tile, Topk, TypedConcat};
 use tract_core::ops::cast::wire_cast;
 use tract_core::ops::cast::Cast;
 use tract_core::ops::Downsample;
@@ -24,6 +24,7 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite(ser_concat);
     reg.reg_to_tflite(ser_downsample);
     reg.reg_to_tflite(ser_slice);
+    reg.reg_to_tflite(ser_tile);
     reg.reg_to_tflite(ser_topk);
 
     reg.reg_to_tract(BuiltinOperator::BROADCAST_TO, de_broadcast_to);
@@ -36,6 +37,7 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::SLICE, de_slice);
     reg.reg_to_tract(BuiltinOperator::SQUEEZE, de_squeeze);
     reg.reg_to_tract(BuiltinOperator::STRIDED_SLICE, de_strided_slice);
+    reg.reg_to_tract(BuiltinOperator::TILE, de_tile);
     reg.reg_to_tract(BuiltinOperator::TOPK_V2, de_topk_v2);
     reg.reg_to_tract(BuiltinOperator::TRANSPOSE, de_transpose);
 }
@@ -51,6 +53,19 @@ fn de_broadcast_to(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         .map(|d| *d as usize)
         .collect();
     op.ctx.target.wire_node(op.prefix, MultiBroadcastTo { shape }, &op.inputs[0..1])
+}
+
+fn de_tile(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let (_input, multiples) = args_2!(op.facts()?);
+    let multiples = multiples.konst.clone().context("Dynamic TILE is not supported")?;
+    let multipliers = multiples
+        .cast_to::<i64>()?
+        .try_as_plain_ram()?
+        .as_slice::<i64>()?
+        .iter()
+        .map(|m| m.to_dim())
+        .collect();
+    op.ctx.target.wire_node(op.prefix, Tile::new(multipliers), &op.inputs[0..1])
 }
 
 /// TOPK_V2: the `k` largest entries along the last axis, sorted, ties to the lowest index.
@@ -300,6 +315,23 @@ fn ser_broadcast_to(
         .write_fact(format!("{}.shape", node.name), TypedFact::try_from(tensor1(&shape))?)?;
     inputs.push(shape);
     builder.write_op(&inputs, &[output], 130, 3, BuiltinOperator::BROADCAST_TO)
+}
+
+fn ser_tile(
+    builder: &mut SubgraphBuilder,
+    _model: &TypedModel,
+    node: &TypedNode,
+    op: &Tile,
+) -> TractResult<()> {
+    let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]]);
+    let output = builder.outlets_to_tensors[&node.id.into()];
+    let multiples = op.multipliers.iter().map(|m| m.to_i32()).collect::<Result<Vec<i32>, _>>()?;
+    let multiples = builder.write_fact(
+        format!("{}.multiples", node.name),
+        TypedFact::try_from(tensor1(&multiples))?,
+    )?;
+    inputs.push(multiples);
+    builder.write_op(&inputs, &[output], 69, 1, BuiltinOperator::TILE)
 }
 
 /// Writes `Topk` as TOPK_V2 followed by a CAST of its i32 indices to i64. TOPK_V2 only

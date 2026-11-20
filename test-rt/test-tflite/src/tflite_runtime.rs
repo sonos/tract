@@ -84,8 +84,12 @@ impl State for TfliteState {
         for ix in 0..interpreter.output_tensor_count() {
             let output_tensor = interpreter.output(ix)?;
             let dt = match output_tensor.data_type() {
+                DataType::Float16 => f16::datum_type(),
                 DataType::Float32 => f32::datum_type(),
+                DataType::Float64 => f64::datum_type(),
                 DataType::Bool => bool::datum_type(),
+                DataType::Int16 => i16::datum_type(),
+                DataType::Int32 => i32::datum_type(),
                 DataType::Int64 => i64::datum_type(),
                 DataType::Uint8 => {
                     if let Some(qp) = output_tensor.quantization_parameters() {
@@ -107,7 +111,6 @@ impl State for TfliteState {
                         i8::datum_type()
                     }
                 }
-                _ => bail!("unknown type in tract tflitec test Runtime"),
             };
             let tensor = unsafe {
                 Tensor::from_raw_dt(dt, output_tensor.shape().dimensions(), output_tensor.data())?
