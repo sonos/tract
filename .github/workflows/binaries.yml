@@ -115,10 +115,15 @@ jobs:
           cp target/${target}/release/tract tract-${name}
           tar czf tract-${name}.tgz tract-${name}
 
+      # Scan the shipped binary, not the checkout. `cargo auditable build`
+      # above embeds the crates that were compiled for this target, and syft
+      # reads that list back. Pointing syft at `.` instead catalogued every
+      # Cargo.lock, workflow and Python file in the tree (plus the musl
+      # cross toolchain unpacked into it), whatever the target.
       - name: Generate CycloneDX SBOM
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
-          path: .
+          file: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}/tract
           format: cyclonedx-json
           artifact-name: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.cdx.json
           output-file: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.cdx.json
@@ -128,7 +133,7 @@ jobs:
       - name: Generate SPDX SBOM
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
-          path: .
+          file: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}/tract
           format: spdx-json
           artifact-name: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.spdx.json
           output-file: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.spdx.json
