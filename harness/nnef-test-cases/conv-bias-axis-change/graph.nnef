@@ -1,0 +1,24 @@
+version 1.0;
+
+# Two batchless convolutions between matmuls, each fed a bias that is not a
+# constant: the axis removals shaping it into a vector must stay on the bias.
+graph conv_bias_axis_change(a, bias_2d, bias_3d) -> (output_2d, output_3d)
+{
+    a = external<scalar>(shape = [2, 3, 3]);
+    bias_2d = external<scalar>(shape = [1, 2]);
+    bias_3d = external<scalar>(shape = [2, 1]);
+    m_in = [[[1.0, 0.5, -0.5, 0.25], [0.0, 1.0, 0.5, -1.0], [0.5, -0.25, 1.0, 0.0]]];
+    m_out = [[[1.0, -0.5], [0.5, 0.25], [-0.25, 1.0]]];
+    kernel_2d = [[[[0.5, -0.25], [0.25, 1.0]], [[-0.5, 0.75], [1.0, 0.25]]], [[[0.25, 0.5], [-1.0, 0.5]], [[0.75, -0.25], [0.5, -0.5]]]];
+    kernel_3d = [[[[[0.5, -0.25], [0.25, 1.0]]], [[[-0.5, 0.75], [1.0, 0.25]]]], [[[[0.25, 0.5], [-1.0, 0.5]]], [[[0.75, -0.25], [0.5, -0.5]]]]];
+
+    x_2d = matmul(a, m_in);
+    batched_2d = unsqueeze(x_2d, axes = [0]);
+    conv_2d = conv(batched_2d, kernel_2d, bias_2d, border = 'constant', padding = [(0, 0), (0, 0)]);
+    output_2d = matmul(squeeze(conv_2d, axes = [0]), m_out);
+
+    x_3d = matmul(unsqueeze(a, axes = [1]), [m_in]);
+    batched_3d = unsqueeze(x_3d, axes = [0]);
+    conv_3d = conv(batched_3d, kernel_3d, bias_3d, border = 'constant', padding = [(0, 0), (0, 0), (0, 0)]);
+    output_3d = matmul(squeeze(conv_3d, axes = [0]), [m_out]);
+}

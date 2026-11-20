@@ -1288,9 +1288,8 @@ impl TypedOp for Conv {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         rule_if!(io != InOut::In(1));
-        if io == InOut::In(2)
-            && let &AxisOp::Rm(_) = change
-        {
+        if io == InOut::In(2) {
+            rule_if!(matches!(change, AxisOp::Rm(_)));
             return Ok(Some(AxisChangeConsequence {
                 substitute_op: Some(Box::new(self.clone())),
                 wire_changes: tvec!(),
