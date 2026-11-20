@@ -27,6 +27,7 @@ pub mod identity;
 pub mod konst;
 pub mod logic;
 pub mod lstm_cell;
+pub mod lstm_seq;
 pub mod math;
 pub mod matmul;
 pub mod nn;
