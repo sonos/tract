@@ -122,6 +122,20 @@ fn prefix_is_one_stride(a: &TypedFact, b: &TypedFact) -> bool {
 }
 
 /// The same product with its operands exchanged: `(A B)^T = B^T A^T`.
+/// Whether `op` multiplies plain f16 tensors, or an f16 by an f32 one, in f32, as attention's
+/// scores and output do in an f16 model: the device runs it as an f32 product with its f16
+/// inputs cast to f32, which is exact, rather than leaving it to the CPU.
+fn upcasts_f16_inputs(op: &PrefixMatMul, facts: &[&TypedFact]) -> bool {
+    op.quantize_output.is_none()
+        && op.operating_dt == Some(DatumType::F32)
+        && facts.len() == 2
+        && facts.iter().all(|f| {
+            matches!(f.datum_type, DatumType::F16 | DatumType::F32) && f.exotic_fact().is_none()
+        })
+        && facts.iter().any(|f| f.datum_type == DatumType::F16)
+        && facts[0].rank() <= crate::kernels::matmul::MAX_RANK
+}
+
 fn swapped(op: &PrefixMatMul) -> PrefixMatMul {
     PrefixMatMul {
         transpose_a: !op.transpose_b,
@@ -151,7 +165,8 @@ pub fn translate_gemm(
         input_facts.swap(0, 1);
         op = swapped(&op);
     }
-    if !packed_weight_ok(&op, &input_facts) {
+    let upcast = upcasts_f16_inputs(&op, &input_facts);
+    if !upcast && !packed_weight_ok(&op, &input_facts) {
         rule_if!(
             op.quantize_output.is_none()
                 && op.operating_dt.is_none_or(|dt| dt == input_facts[0].datum_type)
@@ -168,6 +183,21 @@ pub fn translate_gemm(
     if on_a {
         device_inputs.swap(0, 1);
     }
+    if upcast {
+        for (ix, input) in device_inputs.iter_mut().enumerate() {
+            if input_facts[ix].datum_type != DatumType::F16 {
+                continue;
+            }
+            let cast = tract_gpu::ops::cast::GpuCast::new(
+                DatumType::F32,
+                "Wgpu",
+                crate::kernels::cast::wgpu_cast_dispatch,
+                crate::kernels::cast::is_supported_dt,
+            )
+            .context("wgpu casts f16 to f32")?;
+            *input = target.wire_node(format!("{}.upcast-{ix}", node.name), cast, &[*input])?[0];
+        }
+    }
     let gemm = WgpuGemm {
         op,
         epilogue: vec![],
@@ -175,4 +205,50 @@ pub fn translate_gemm(
     };
     let outlet_ids = target.wire_node(node.name.clone(), gemm, &device_inputs)?;
     Ok(Some(outlet_ids))
+}
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+    use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+
+    use crate::test_utils::{fill, gpu_vs_cpu, transformed};
+
+    /// Attention in an f16 model: f16 queries by f16 keys, then f32 probabilities by f16 values,
+    /// both multiplied in f32. The products run on the device, over their f16 inputs cast to
+    /// f32, and match the CPU.
+    #[test]
+    fn f16_inputs_in_f32_run_on_device() -> TractResult<()> {
+        for a_dt in [f16::datum_type(), f32::datum_type()] {
+            f16_inputs_in_f32(a_dt).with_context(|| format!("a: {a_dt:?}"))?;
+        }
+        Ok(())
+    }
+
+    fn f16_inputs_in_f32(a_dt: DatumType) -> TractResult<()> {
+        let build = || -> TractResult<TypedModel> {
+            let mut model = TypedModel::default();
+            let q = model.add_source("q", a_dt.fact([2, 3, 40]))?;
+            let k = Tensor::from_shape(&[2, 5, 40], &fill(1, 400))?.cast_to::<f16>()?.into_owned();
+            let k = model.add_const("k", k)?;
+            let op = PrefixMatMul {
+                transpose_a: false,
+                transpose_b: true,
+                transpose_c: false,
+                quantize_output: None,
+                operating_dt: Some(f32::datum_type()),
+            };
+            let scores = model.wire_node("scores", op, &[q, k])?[0];
+            model.select_output_outlets(&[scores])?;
+            Ok(model)
+        };
+        let gpu = transformed(build()?)?;
+        crate::ensure_wgpu_coverage(&gpu)?;
+        ensure!(
+            !gpu.nodes().iter().any(|n| n.op_is::<PrefixMatMul>()),
+            "matmul left on CPU in {gpu}"
+        );
+        let input = Tensor::from_shape(&[2, 3, 40], &fill(2, 240))?.cast_to_dt(a_dt)?.into_owned();
+        gpu_vs_cpu(build()?, input)
+    }
 }
