@@ -1364,7 +1364,7 @@ jobs:
   # jobs. `/ci bench wasm` runs it alone on a PR, against that nightly series.
   bench-wasm:
     needs: [ prepare, build, build-wasm ]
-    if: ${{ needs.prepare.outputs.enabled == 'true' && (needs.prepare.outputs.is_pr != 'true' || needs.prepare.outputs.kind == 'wasm') && needs.prepare.outputs.mt_ladder == '' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && (needs.prepare.outputs.is_pr != 'true' || needs.prepare.outputs.kind == 'wasm') && needs.prepare.outputs.mt_ladder == '' && !contains(format(' {0} ', vars.BENCH_DISABLED_BOXES), ' i9-9900k ') }}
     runs-on: i99900k
     timeout-minutes: 90
     permissions:
