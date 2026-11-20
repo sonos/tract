@@ -569,7 +569,8 @@ const X86_F32_CHOICES: &[KernelChoice] = &[
 
 /// n==1: below the widest matvec kernel's mr (128) the cost model picks a better-fitting kernel
 /// (16x1/32x1); at or above it the 128x1 is already optimal, so keep it. AMD has no
-/// n=1-calibrated mmv model yet, and keeps the fixed matvec dispatch.
+/// n=1-calibrated mmv model yet and keeps a fixed rule: 16x1 while the 128x1 would pad `m` to
+/// twice its size or more, as the 128x1 reads all 128 packed weight rows whatever `m` is.
 fn avx512_mmv_f32(suitable: &[Suitable], query: &Query) -> Option<&'static str> {
     match super::vendor() {
         super::Vendor::Intel => match query.m {
@@ -582,7 +583,7 @@ fn avx512_mmv_f32(suitable: &[Suitable], query: &Query) -> Option<&'static str> 
             _ => Some(avx512_mmm_f32_128x1.name.as_str()),
         },
         _ => match query.m {
-            Some(m) if m < 31 => Some(avx512_mmm_f32_16x1.name.as_str()),
+            Some(m) if m <= 64 => Some(avx512_mmm_f32_16x1.name.as_str()),
             _ => Some(avx512_mmm_f32_128x1.name.as_str()),
         },
     }
@@ -726,5 +727,21 @@ mod tests {
             m * n,
         );
         Ok(())
+    }
+
+    /// A matrix-vector product must not pad a small `m` up to the 128x1 tile, while a large
+    /// `m` keeps it.
+    #[test]
+    fn avx512_mmv_tile_follows_m() {
+        if !is_x86_feature_detected!("avx512f") {
+            return;
+        }
+        let dispatch = crate::MmmDispatch::native();
+        let small = Query::plain(DatumType::F32, Some(32), Some(64), Some(1));
+        let (mmm, _, pe) = dispatch.pick(&small).unwrap();
+        assert!(mmm.nr() == 1 && mmm.mr() <= 32 && pe.is_none(), "m=32 got {}", mmm.name());
+        let large = Query::plain(DatumType::F32, Some(768), Some(256), Some(1));
+        let (mmm, _, _) = dispatch.pick(&large).unwrap();
+        assert_eq!(mmm.name(), avx512_mmm_f32_128x1.name.as_str());
     }
 }
