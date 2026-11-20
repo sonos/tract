@@ -4,6 +4,7 @@ mod fuse_concat_resize;
 mod fuse_elementwise;
 mod fuse_epilogue;
 mod fuse_gemv_pair;
+mod lift_above_slices;
 mod winograd;
 
 pub use decoder_gate::fuse_decoder_gate;
@@ -13,4 +14,5 @@ pub use fuse_concat_resize::fuse_resize_concat_output;
 pub use fuse_elementwise::{grow_elementwise_chain, start_binary_chain, start_elementwise_chain};
 pub use fuse_epilogue::{fuse_conv_epilogue, fuse_deconv_epilogue, fuse_gemm_epilogue};
 pub use fuse_gemv_pair::{fuse_gemv_pair, fuse_gemv_pair_tail};
+pub use lift_above_slices::lift_elementwise_above_slices;
 pub use winograd::conv_to_winograd_f43;

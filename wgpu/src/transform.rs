@@ -125,6 +125,12 @@ impl ModelTransform for WgpuTransform {
             .with_rule_for("fuse_gemv_pair_tail", crate::rewrite_rules::fuse_gemv_pair_tail)
             .rewrite(&(), model)?;
         Rewriter::default()
+            .with_rule_for(
+                "lift_elementwise_above_slices",
+                crate::rewrite_rules::lift_elementwise_above_slices,
+            )
+            .rewrite(&(), model)?;
+        Rewriter::default()
             .with_rule_for("fuse_gemm_epilogue", crate::rewrite_rules::fuse_gemm_epilogue)
             .with_rule_for("fuse_conv_epilogue", crate::rewrite_rules::fuse_conv_epilogue)
             .with_rule_for("fuse_deconv_epilogue", crate::rewrite_rules::fuse_deconv_epilogue)

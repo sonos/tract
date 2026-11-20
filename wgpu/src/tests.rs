@@ -191,6 +191,146 @@ fn scalar_minus_tensor_alone_stays_a_binop() -> TractResult<()> {
     Ok(())
 }
 
+/// A conv split into channel slices that all feed the same scalar elementwise
+/// op lifts it above the split, where it rides the conv's epilogue.
+#[test]
+fn conv_split_relu_lifts_into_the_epilogue() -> TractResult<()> {
+    use tract_core::ops::array::{Slice, TypedConcat};
+    use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+    use tract_core::ops::math::max;
+    use tract_core::ops::nn::DataFormat;
+    use tract_gpu::ops::binary::GpuBinOp;
+    let mut model = TypedModel::default();
+    let x = model.add_source("x", f32::fact([1, 8, 8, 8]))?;
+    let k = model.add_const("k", Tensor::from_shape(&[8, 8, 3, 3], &fill(3, 8 * 8 * 9))?)?;
+    let bias = model.add_const("bias", rctensor0(0f32))?;
+    let conv = Conv {
+        pool_spec: PoolSpec {
+            data_format: DataFormat::NCHW,
+            kernel_shape: tvec![3, 3],
+            padding: PaddingSpec::Explicit(tvec![1, 1], tvec![1, 1]),
+            dilations: None,
+            strides: Some(tvec![1, 1]),
+            input_channels: 8,
+            output_channels: 8,
+        },
+        kernel_fmt: KernelFormat::OIHW,
+        group: 1,
+        q_params: None,
+    };
+    let y = model.wire_node("conv", conv, &[x, k, bias])?[0];
+    let a = model.wire_node("lo", Slice::new(1, 0, 4), &[y])?[0];
+    let b = model.wire_node("hi", Slice::new(1, 4, 8), &[y])?[0];
+    let zero = model.add_const("zero", Tensor::from_shape(&[1, 1, 1, 1], &[0.0f32])?)?;
+    let a = model.wire_node("relu_lo", max(), &[a, zero])?[0];
+    let b = model.wire_node("relu_hi", max(), &[b, zero])?[0];
+    let y = model.wire_node("concat", TypedConcat::new(1), &[a, b])?[0];
+    model.select_output_outlets(&[y])?;
+    let fused = transformed(model.clone())?;
+    ensure!(
+        fused.nodes().iter().all(|n| !n.op_is::<GpuBinOp>()),
+        "no binary op should be left over"
+    );
+    let convs = fused
+        .nodes()
+        .iter()
+        .filter_map(|n| n.op_as::<crate::ops::conv::WgpuConv>())
+        .collect::<Vec<_>>();
+    ensure!(convs.len() == 1, "expected one conv, got {}", convs.len());
+    ensure!(
+        convs[0].epilogue.iter().any(|s| matches!(
+            s,
+            crate::kernels::shaders::ChainStep::Binary { op, .. } if op == "max"
+        )),
+        "the max should ride the conv epilogue, got {:?}",
+        convs[0].epilogue
+    );
+    gpu_vs_cpu(model, Tensor::from_shape(&[1, 8, 8, 8], &fill(5, 512))?)
+}
+
+/// Halves fed different ops keep their own dispatches.
+#[test]
+fn conv_split_different_ops_do_not_lift() -> TractResult<()> {
+    use tract_core::ops::array::{Slice, TypedConcat};
+    use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+    use tract_core::ops::math::max;
+    use tract_core::ops::math::min;
+    use tract_core::ops::nn::DataFormat;
+    use tract_gpu::ops::binary::GpuBinOp;
+    let mut model = TypedModel::default();
+    let x = model.add_source("x", f32::fact([1, 8, 8, 8]))?;
+    let k = model.add_const("k", Tensor::from_shape(&[8, 8, 3, 3], &fill(3, 8 * 8 * 9))?)?;
+    let bias = model.add_const("bias", rctensor0(0f32))?;
+    let conv = Conv {
+        pool_spec: PoolSpec {
+            data_format: DataFormat::NCHW,
+            kernel_shape: tvec![3, 3],
+            padding: PaddingSpec::Explicit(tvec![1, 1], tvec![1, 1]),
+            dilations: None,
+            strides: Some(tvec![1, 1]),
+            input_channels: 8,
+            output_channels: 8,
+        },
+        kernel_fmt: KernelFormat::OIHW,
+        group: 1,
+        q_params: None,
+    };
+    let y = model.wire_node("conv", conv, &[x, k, bias])?[0];
+    let a = model.wire_node("lo", Slice::new(1, 0, 4), &[y])?[0];
+    let b = model.wire_node("hi", Slice::new(1, 4, 8), &[y])?[0];
+    let zero = model.add_const("zero", Tensor::from_shape(&[1, 1, 1, 1], &[0.0f32])?)?;
+    let a = model.wire_node("relu_lo", max(), &[a, zero])?[0];
+    let b = model.wire_node("relu_hi", min(), &[b, zero])?[0];
+    let y = model.wire_node("concat", TypedConcat::new(1), &[a, b])?[0];
+    model.select_output_outlets(&[y])?;
+    let fused = transformed(model.clone())?;
+    let binops = fused.nodes().iter().filter(|n| n.op_is::<GpuBinOp>()).count();
+    ensure!(binops == 2, "both halves should keep their own op, got {binops}");
+    gpu_vs_cpu(model, Tensor::from_shape(&[1, 8, 8, 8], &fill(5, 512))?)
+}
+
+/// A slice read by anything else besides the shared op blocks the lift.
+#[test]
+fn conv_split_extra_consumer_does_not_lift() -> TractResult<()> {
+    use tract_core::ops::array::{Slice, TypedConcat};
+    use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+    use tract_core::ops::math::max;
+    use tract_core::ops::math::min;
+    use tract_core::ops::nn::DataFormat;
+    use tract_gpu::ops::binary::GpuBinOp;
+    let mut model = TypedModel::default();
+    let x = model.add_source("x", f32::fact([1, 8, 8, 8]))?;
+    let k = model.add_const("k", Tensor::from_shape(&[8, 8, 3, 3], &fill(3, 8 * 8 * 9))?)?;
+    let bias = model.add_const("bias", rctensor0(0f32))?;
+    let conv = Conv {
+        pool_spec: PoolSpec {
+            data_format: DataFormat::NCHW,
+            kernel_shape: tvec![3, 3],
+            padding: PaddingSpec::Explicit(tvec![1, 1], tvec![1, 1]),
+            dilations: None,
+            strides: Some(tvec![1, 1]),
+            input_channels: 8,
+            output_channels: 8,
+        },
+        kernel_fmt: KernelFormat::OIHW,
+        group: 1,
+        q_params: None,
+    };
+    let y = model.wire_node("conv", conv, &[x, k, bias])?[0];
+    let a = model.wire_node("lo", Slice::new(1, 0, 4), &[y])?[0];
+    let b = model.wire_node("hi", Slice::new(1, 4, 8), &[y])?[0];
+    let zero = model.add_const("zero", Tensor::from_shape(&[1, 1, 1, 1], &[0.0f32])?)?;
+    let extra = model.wire_node("extra", min(), &[a, zero])?[0];
+    let a = model.wire_node("relu_lo", max(), &[a, zero])?[0];
+    let b = model.wire_node("relu_hi", max(), &[b, zero])?[0];
+    let y = model.wire_node("concat", TypedConcat::new(1), &[a, b])?[0];
+    model.select_output_outlets(&[y, extra])?;
+    let fused = transformed(model.clone())?;
+    let binops = fused.nodes().iter().filter(|n| n.op_is::<GpuBinOp>()).count();
+    ensure!(binops == 3, "the split ops should stay, got {binops}");
+    gpu_vs_cpu(model, Tensor::from_shape(&[1, 8, 8, 8], &fill(5, 512))?)
+}
+
 #[test]
 fn bias_and_activation_become_a_gemm_epilogue() -> TractResult<()> {
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
