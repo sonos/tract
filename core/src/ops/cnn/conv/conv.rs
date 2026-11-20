@@ -132,6 +132,7 @@ impl Conv {
                     k_axis: 2,
                     mn_axis: 1,
                     mode_picker: ModePicker::Single,
+                    lazy: false,
                 },
                 &[kernel],
             )?
