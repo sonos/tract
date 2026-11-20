@@ -20,6 +20,7 @@ import json
 import re
 import subprocess
 import sys
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -105,6 +106,28 @@ ALL_ARCHES = "all"
 # The GPU runtimes' crates. tract-cli links some of them in every build, but a CPU bench
 # never runs their code.
 GPU_CRATES = frozenset(["tract-gpu", "tract-cuda", "tract-metal", "tract-wgpu"])
+
+# The model frontends tract-cli links. A bench only loads the frontends of the models in
+# ci/benches.toml, so the others never run in a bench leg.
+FRONTENDS = {"onnx": "tract-onnx", "tf": "tract-tensorflow", "tflite": "tract-tflite"}
+
+
+def bench_format(model):
+    """The frontend bench-suite loads `model` with (format_hint in cli/src/bench_suite.rs)."""
+    m = model.lower()
+    if m.endswith(".onnx"):
+        return "onnx"
+    if m.endswith(".tflite"):
+        return "tflite"
+    if m.endswith((".tgz", ".tar", ".tar.gz")):
+        return "nnef"
+    return "tf"
+
+
+def unbenched_frontends():
+    manifest = tomllib.loads((ROOT / "ci" / "benches.toml").read_text())
+    used = {bench_format(b["model"]) for b in manifest.get("bench", []) if "model" in b}
+    return frozenset(crate for fmt, crate in FRONTENDS.items() if fmt not in used)
 
 
 @dataclass(frozen=True)
@@ -192,6 +215,7 @@ def cli_spec(features, default_features=False):
 
 def legs():
     out = []
+    unbenched = unbenched_frontends()
 
     def leg(workflow, key, triple, specs, **kw):
         out.append(Leg(workflow, key, triple, specs, **kw))
@@ -227,7 +251,7 @@ def legs():
         ("jetson-orin-nx", "aarch64-unknown-linux-gnu", f"{CPU},cuda-12000"),
     ]:
         leg(cli, f"bench {box}", triple, [cli_spec(features)], paths=BENCH_PATHS,
-            exclude=frozenset() if features != CPU else GPU_CRATES)
+            exclude=unbenched | (frozenset() if features != CPU else GPU_CRATES))
     for device, triple in [
         ("cortex-a55", "aarch64-unknown-linux-gnu"),
         ("cortex-a53", "aarch64-unknown-linux-gnu"),
@@ -237,7 +261,7 @@ def legs():
         ("orangepi-rv2", "riscv64gc-unknown-linux-musl"),
     ]:
         leg(cli, f"bench {device}", triple, [cli_spec(DINGHY_CLI)], paths=BENCH_PATHS,
-            exclude=GPU_CRATES)
+            exclude=unbenched | GPU_CRATES)
 
     crates = "crates.yml"
     host = "x86_64-unknown-linux-gnu"
