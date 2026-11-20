@@ -1,5 +1,5 @@
 use tract_core::internal::*;
-use tract_core::ops::array::{Pad, PadMode};
+use tract_core::ops::array::{Pad, PadMode, Slice, Tile, TypedConcat};
 use tract_core::ops::cnn::{
     rewrite_conv_1d_to_2d, rewrite_conv_with_n_axis, KernelFormat, MaxPool, PoolSpec, SumPool,
 };
@@ -27,6 +27,7 @@ pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
         .with_rule_for("resize-nchw-to-nhwc", resize_nchw_to_nhwc)
         .with_rule_for("nearest-upsample-to-broadcast", rewrite_nearest_upsample_to_broadcast)
         .with_rule_for("padding", padding)
+        .with_rule_for("edge_pad", edge_pad)
         .with_rule_for("manual_recip", manual_recip)
         .with_rule_for("softmax_on_last_axis", softmax_on_last_axis)
         .with_rule_for("expand-means-of-square", expand_mean_of_squares)
@@ -257,6 +258,53 @@ fn resize_nchw_to_nhwc(
     let resized = patch.wire_node(name, op.clone(), &wire)?;
     let out = patch.wire_node(format!("{name}.nchw"), AxisOp::Move(3, 1), &resized)?;
     patch.shunt_outside(model, node.id.into(), out[0])?;
+    Ok(Some(patch))
+}
+
+/// Expresses an edge-mode `Pad`, which tflite has no operator for, as a concatenation per padded
+/// axis of the tiled border slices around the input.
+fn edge_pad(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    pad: &Pad,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_if!(pad.mode == PadMode::Edge);
+    let fact = model.outlet_fact(node.inputs[0])?;
+    let rank = fact.rank();
+    let mut patch = TypedModelPatch::default();
+    let mut wire = patch.tap_model(model, node.inputs[0])?;
+    for (axis, &(before, after)) in pad.pads.iter().enumerate() {
+        if before == 0 && after == 0 {
+            continue;
+        }
+        let dim = patch.outlet_fact(wire)?.shape[axis].clone();
+        let mut border = |side: &str, start: TDim, count: usize| -> TractResult<OutletId> {
+            let slice = patch.wire_node(
+                format!("{name}.axis{axis}.{side}"),
+                Slice::new(axis, start.clone(), start + 1),
+                &[wire],
+            )?;
+            let mut multipliers = tvec![1.to_dim(); rank];
+            multipliers[axis] = count.to_dim();
+            Ok(patch.wire_node(
+                format!("{name}.axis{axis}.{side}.tile"),
+                Tile::new(multipliers),
+                &slice,
+            )?[0])
+        };
+        let mut pieces = tvec![];
+        if before > 0 {
+            pieces.push(border("before", 0.to_dim(), before)?);
+        }
+        pieces.push(wire);
+        if after > 0 {
+            pieces.push(border("after", dim - 1, after)?);
+        }
+        wire = patch.wire_node(format!("{name}.axis{axis}"), TypedConcat::new(axis), &pieces)?[0];
+    }
+    patch.shunt_outside(model, node.id.into(), wire)?;
     Ok(Some(patch))
 }
 

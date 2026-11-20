@@ -87,6 +87,8 @@ fn ignore_onnx(t: &[String]) -> bool {
         test_reshape
         test_slice
         test_split
+        test_tile_precomputed
+        test_edge_pad
 
         test_where
         test_less
@@ -109,6 +111,7 @@ fn ignore_onnx(t: &[String]) -> bool {
         test_softmax
 
         test_abs
+        test_neg
         test_ceil
         test_exp
         test_floor
@@ -267,6 +270,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         "clamped_swiglu",
         "conv_f16",
         "cumsum",
+        "decoder_gate",
         "deconv",
         "diag_gather",
         "elmwise",

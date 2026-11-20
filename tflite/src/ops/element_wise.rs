@@ -28,6 +28,7 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::LOGICAL_NOT, |op| deser(op, not()));
     reg.reg_to_tract(BuiltinOperator::SIN, |op| deser(op, sin()));
     reg.reg_to_tract(BuiltinOperator::LOGISTIC, |op| deser(op, sigmoid()));
+    reg.reg_to_tract(BuiltinOperator::NEG, |op| deser(op, neg()));
     reg.reg_to_tract(BuiltinOperator::SQRT, |op| deser(op, sqrt()));
     reg.reg_to_tract(BuiltinOperator::SQUARE, |op| deser(op, square()));
     reg.reg_to_tract(BuiltinOperator::RSQRT, |op| deser(op, rsqrt()));
@@ -117,6 +118,8 @@ fn ser(
         builder.write_op(&[input], &[output], 104, 1, BuiltinOperator::CEIL)
     } else if (*op.0).is::<Floor>() {
         builder.write_op(&[input], &[output], 8, 1, BuiltinOperator::FLOOR)
+    } else if (*op.0).is::<Neg>() {
+        builder.write_op(&[input], &[output], 59, 1, BuiltinOperator::NEG)
     } else if (*op.0).is::<Sin>() {
         builder.write_op(&[input], &[output], 66, 1, BuiltinOperator::SIN)
     } else if (*op.0).is::<Sqrt>() {
