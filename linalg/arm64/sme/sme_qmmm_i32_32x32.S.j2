@@ -271,13 +271,25 @@
 
 .Laddu_generic:
     // Strided gather to scratch, then contig accumulate (mirrors Phase 1).
+    mov     x13, x9             // preserve item_size before x9 is reused as a temp
     mov     x3, #0
     mov     x10, x1
 .Laddu_gather_row:
     mov     x11, x5
     mov     x4, #0
 .Laddu_gather_col:
+    cmp     x13, #1             // item_size: 1 -> ldrsb, 2 -> ldrsh, else (4) -> ldr
+    b.eq    .Laddu_b1
+    cmp     x13, #2
+    b.eq    .Laddu_b2
     ldr     w9, [x11]
+    b       .Laddu_gathered
+.Laddu_b1:
+    ldrsb   w9, [x11]
+    b       .Laddu_gathered
+.Laddu_b2:
+    ldrsh   w9, [x11]
+.Laddu_gathered:
     str     w9, [x10], #4
     add     x11, x11, x7
     add     x4, x4, #1
