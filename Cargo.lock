@@ -2922,6 +2922,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nemotron-omni"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "hound",
+ "image",
+ "tokenizers",
+ "tract",
+]
+
+[[package]]
 name = "nemotron-voicechat"
 version = "0.1.0"
 dependencies = [
