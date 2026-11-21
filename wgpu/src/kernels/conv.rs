@@ -1465,7 +1465,12 @@ pub fn conv_pixel_module(
         )
     };
     let macs: String = (0..nacc)
-        .map(|j| format!("            if ({j}u < params.co) {{\n{}\n            }}\n", tap(j, &format!("{j}u"))))
+        .map(|j| {
+            format!(
+                "            if ({j}u < params.co) {{\n{}\n            }}\n",
+                tap(j, &format!("{j}u"))
+            )
+        })
         .collect();
     let store_one = |co_expr: &str, acc: &str| {
         format!(
@@ -1478,7 +1483,12 @@ pub fn conv_pixel_module(
         )
     };
     let stores: String = (0..nacc)
-        .map(|j| format!("        if ({j}u < params.co) {{\n{}}}\n", store_one(&format!("{j}u"), &format!("acc{j}"))))
+        .map(|j| {
+            format!(
+                "        if ({j}u < params.co) {{\n{}}}\n",
+                store_one(&format!("{j}u"), &format!("acc{j}"))
+            )
+        })
         .collect();
     // Wide loads the nine taps once per input channel. The grouped form re-reads
     // them for every four output channels, which is the whole stem at co = 16.
