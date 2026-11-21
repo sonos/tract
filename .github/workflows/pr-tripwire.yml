@@ -1,0 +1,40 @@
+name: PR tripwire
+
+# Flags fork PRs whose diff looks like a CI probe (cloud metadata, network fetches,
+# credential paths, recon, obfuscation, build-script spawning) before a maintainer clicks
+# "Approve and run", which releases the PR's code onto the self-hosted runners. Reports a
+# `tripwire` commit status on the PR head and a findings table in the run summary.
+
+# Hardened: pull_request_target so it runs without approval, from main's copy of this file
+# and of the script. It checks out main's .github/scripts only, never the PR; the diff is
+# read through the API as data, and the token can only set a commit status.
+on:  # zizmor: ignore[dangerous-triggers]
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: pr-tripwire-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    if: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: .github/scripts
+          path: .ci-scripts
+          persist-credentials: false
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const tripwire = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/pr-tripwire.js`);
+            await tripwire.run({ github, context, core });
