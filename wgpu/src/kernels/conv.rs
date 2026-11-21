@@ -389,11 +389,15 @@ pub fn wgpu_conv_dispatch(
                 || conv_tiled_module(dt, epilogue, extras.len(), tile_m),
             )?
         } else if per_pixel {
+            // Four output channels re-read the same 3×3 patch. Holding every
+            // channel (at most 16) loads that patch once per input channel.
+            let wide = ci <= 4 && co <= 16;
+            let entry = if wide { "conv2d_pixel_wide" } else { "conv2d_pixel" };
             q.context().chain_pipeline(
-                ("conv_pixel", dt, epilogue, extras.len()),
+                ("conv_pixel", dt, epilogue, extras.len(), wide),
                 layout,
-                EntryPoint::typed("conv2d_pixel", dt),
-                || conv_pixel_module(dt, epilogue, extras.len()),
+                EntryPoint::typed(entry, dt),
+                || conv_pixel_module(dt, epilogue, extras.len(), wide),
             )?
         } else if epilogue.is_empty() {
             q.context().pipeline(PipelineKey {
@@ -427,7 +431,8 @@ pub fn wgpu_conv_dispatch(
         }
         if per_pixel {
             let groups = pixels.div_ceil(CONV_PIXEL_WG as usize) as u32;
-            return q.dispatch_grid("conv_pixel", &pipeline, &bg, dyn_off, [groups, 1, 1]);
+            let label = if ci <= 4 && co <= 16 { "conv_pixel_wide" } else { "conv_pixel" };
+            return q.dispatch_grid(label, &pipeline, &bg, dyn_off, [groups, 1, 1]);
         }
         q.dispatch("conv", &pipeline, &bg, dyn_off, (n * co * oh * ow) as u64)
     })
@@ -1419,7 +1424,12 @@ pub const CONV_PIXEL_WG: u32 = 256;
 /// of four rather than once per output element. The kernel came out of an
 /// OpenEvolve search over tract's own conv contract (3.0x on the stem, seed
 /// 115us); the taps are unrolled for kh = kw = 3 at dilation 1.
-pub fn conv_pixel_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+pub fn conv_pixel_module(
+    dt: ShaderDtype,
+    epilogue: &[ChainStep],
+    extras: usize,
+    wide: bool,
+) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
     let out_binding = 2 + extras;
@@ -1435,6 +1445,90 @@ pub fn conv_pixel_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize)
         format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
     };
     let epilogue = epilogue_body(epilogue, "co");
+    let entry = if wide { "conv2d_pixel_wide" } else { "conv2d_pixel" };
+    let nacc: usize = if wide { 16 } else { 4 };
+    let acc_decls: String = (0..nacc).map(|j| format!("        var acc{j} = 0.0;\n")).collect();
+    let tap = |j: usize, co_expr: &str| {
+        format!(
+            r#"                let wc0 = params.off_w + ({co_expr}) * u32(params.w_so) + ci * u32(params.w_si);
+                let w00 = f32(wgt[wc0]);
+                let w01 = f32(wgt[wc0 + u32(params.w_sw)]);
+                let w02 = f32(wgt[wc0 + 2u * u32(params.w_sw)]);
+                let w10 = f32(wgt[wc0 + u32(params.w_sh)]);
+                let w11 = f32(wgt[wc0 + u32(params.w_sh) + u32(params.w_sw)]);
+                let w12 = f32(wgt[wc0 + u32(params.w_sh) + 2u * u32(params.w_sw)]);
+                let w20 = f32(wgt[wc0 + 2u * u32(params.w_sh)]);
+                let w21 = f32(wgt[wc0 + 2u * u32(params.w_sh) + u32(params.w_sw)]);
+                let w22 = f32(wgt[wc0 + 2u * u32(params.w_sh) + 2u * u32(params.w_sw)]);
+                acc{j} += i00 * w00 + i01 * w01 + i02 * w02 + i10 * w10 + i11 * w11 + i12 * w12 + i20 * w20 + i21 * w21 + i22 * w22;
+"#
+        )
+    };
+    let macs: String = (0..nacc)
+        .map(|j| format!("            if ({j}u < params.co) {{\n{}\n            }}\n", tap(j, &format!("{j}u"))))
+        .collect();
+    let store_one = |co_expr: &str, acc: &str| {
+        format!(
+            r#"            let co = {co_expr};
+            let out_i = params.off_out + u32(i32(n) * params.out_sn + i32(co) * params.out_sc + i32(oh) * params.out_sh + i32(ow) * params.out_sw);
+            var v = {t}({acc});
+{epilogue}
+            outp[out_i] = v;
+"#
+        )
+    };
+    let stores: String = (0..nacc)
+        .map(|j| format!("        if ({j}u < params.co) {{\n{}}}\n", store_one(&format!("{j}u"), &format!("acc{j}"))))
+        .collect();
+    // Wide loads the nine taps once per input channel. The grouped form re-reads
+    // them for every four output channels, which is the whole stem at co = 16.
+    let pixel_loops = if wide {
+        format!(
+            "{acc_decls}    for (var ci = 0u; ci < params.ci; ci++) {{\n        \
+let i00 = read_inp(ih0, iw0, ci, n);\n        \
+let i01 = read_inp(ih0, iw0 + 1, ci, n);\n        \
+let i02 = read_inp(ih0, iw0 + 2, ci, n);\n        \
+let i10 = read_inp(ih0 + 1, iw0, ci, n);\n        \
+let i11 = read_inp(ih0 + 1, iw0 + 1, ci, n);\n        \
+let i12 = read_inp(ih0 + 1, iw0 + 2, ci, n);\n        \
+let i20 = read_inp(ih0 + 2, iw0, ci, n);\n        \
+let i21 = read_inp(ih0 + 2, iw0 + 1, ci, n);\n        \
+let i22 = read_inp(ih0 + 2, iw0 + 2, ci, n);\n\
+{macs}    }}\n{stores}"
+        )
+    } else {
+        let group_macs: String = (0..4)
+            .map(|j| {
+                format!(
+                    "            if (co_grp + {j}u < params.co) {{\n{}\n            }}\n",
+                    tap(j, &format!("co_grp + {j}u"))
+                )
+            })
+            .collect();
+        let group_stores: String = (0..4)
+            .map(|j| {
+                format!(
+                    "        if (co_grp + {j}u < params.co) {{\n{}}}\n",
+                    store_one(&format!("co_grp + {j}u"), &format!("acc{j}"))
+                )
+            })
+            .collect();
+        format!(
+            "    for (var co_grp = 0u; co_grp < params.co; co_grp += 4u) {{\n        \
+var acc0 = 0.0;\n        var acc1 = 0.0;\n        var acc2 = 0.0;\n        var acc3 = 0.0;\n        \
+for (var ci = 0u; ci < params.ci; ci++) {{\n            \
+let i00 = read_inp(ih0, iw0, ci, n);\n            \
+let i01 = read_inp(ih0, iw0 + 1, ci, n);\n            \
+let i02 = read_inp(ih0, iw0 + 2, ci, n);\n            \
+let i10 = read_inp(ih0 + 1, iw0, ci, n);\n            \
+let i11 = read_inp(ih0 + 1, iw0 + 1, ci, n);\n            \
+let i12 = read_inp(ih0 + 1, iw0 + 2, ci, n);\n            \
+let i20 = read_inp(ih0 + 2, iw0, ci, n);\n            \
+let i21 = read_inp(ih0 + 2, iw0 + 1, ci, n);\n            \
+let i22 = read_inp(ih0 + 2, iw0 + 2, ci, n);\n\
+{group_macs}        }}\n{group_stores}    }}\n"
+        )
+    };
     let mut s = preamble(dt);
     // Same packed params as `conv_module`, see kernels/conv.rs.
     s.push_str(&format!(
@@ -1490,7 +1584,7 @@ fn read_inp(ih: i32, iw: i32, ic: u32, n: u32) -> f32 {{
 }}
 
 @compute @workgroup_size({CONV_PIXEL_WG})
-fn conv2d_pixel_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+fn {entry}_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let idx = gid.x;
     let npix = params.n * params.oh * params.ow;
     if (idx >= npix) {{ return; }}
@@ -1500,90 +1594,8 @@ fn conv2d_pixel_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let n = rest;
     let ih0 = i32(oh) * params.stride_h - params.pad_h;
     let iw0 = i32(ow) * params.stride_w - params.pad_w;
-    // Four channels at a time, in four named accumulators: an indexed private
-    // array here lands in memory under Tint, which costs ~20% in Chrome.
-    for (var co_grp = 0u; co_grp < params.co; co_grp += 4u) {{
-        var acc0 = 0.0;
-        var acc1 = 0.0;
-        var acc2 = 0.0;
-        var acc3 = 0.0;
-        for (var ci = 0u; ci < params.ci; ci++) {{
-            let i00 = read_inp(ih0, iw0, ci, n);
-            let i01 = read_inp(ih0, iw0 + 1, ci, n);
-            let i02 = read_inp(ih0, iw0 + 2, ci, n);
-            let i10 = read_inp(ih0 + 1, iw0, ci, n);
-            let i11 = read_inp(ih0 + 1, iw0 + 1, ci, n);
-            let i12 = read_inp(ih0 + 1, iw0 + 2, ci, n);
-            let i20 = read_inp(ih0 + 2, iw0, ci, n);
-            let i21 = read_inp(ih0 + 2, iw0 + 1, ci, n);
-            let i22 = read_inp(ih0 + 2, iw0 + 2, ci, n);
-            if (co_grp + 0u < params.co) {{
-                let co = co_grp + 0u;
-                let wc0 = params.off_w + co * u32(params.w_so) + ci * u32(params.w_si);
-                let w00 = f32(wgt[wc0]);
-                let w01 = f32(wgt[wc0 + u32(params.w_sw)]);
-                let w02 = f32(wgt[wc0 + 2u * u32(params.w_sw)]);
-                let w10 = f32(wgt[wc0 + u32(params.w_sh)]);
-                let w11 = f32(wgt[wc0 + u32(params.w_sh) + u32(params.w_sw)]);
-                let w12 = f32(wgt[wc0 + u32(params.w_sh) + 2u * u32(params.w_sw)]);
-                let w20 = f32(wgt[wc0 + 2u * u32(params.w_sh)]);
-                let w21 = f32(wgt[wc0 + 2u * u32(params.w_sh) + u32(params.w_sw)]);
-                let w22 = f32(wgt[wc0 + 2u * u32(params.w_sh) + 2u * u32(params.w_sw)]);
-                acc0 += i00 * w00 + i01 * w01 + i02 * w02 + i10 * w10 + i11 * w11 + i12 * w12 + i20 * w20 + i21 * w21 + i22 * w22;
-            }}
-            if (co_grp + 1u < params.co) {{
-                let co = co_grp + 1u;
-                let wc0 = params.off_w + co * u32(params.w_so) + ci * u32(params.w_si);
-                let w00 = f32(wgt[wc0]);
-                let w01 = f32(wgt[wc0 + u32(params.w_sw)]);
-                let w02 = f32(wgt[wc0 + 2u * u32(params.w_sw)]);
-                let w10 = f32(wgt[wc0 + u32(params.w_sh)]);
-                let w11 = f32(wgt[wc0 + u32(params.w_sh) + u32(params.w_sw)]);
-                let w12 = f32(wgt[wc0 + u32(params.w_sh) + 2u * u32(params.w_sw)]);
-                let w20 = f32(wgt[wc0 + 2u * u32(params.w_sh)]);
-                let w21 = f32(wgt[wc0 + 2u * u32(params.w_sh) + u32(params.w_sw)]);
-                let w22 = f32(wgt[wc0 + 2u * u32(params.w_sh) + 2u * u32(params.w_sw)]);
-                acc1 += i00 * w00 + i01 * w01 + i02 * w02 + i10 * w10 + i11 * w11 + i12 * w12 + i20 * w20 + i21 * w21 + i22 * w22;
-            }}
-            if (co_grp + 2u < params.co) {{
-                let co = co_grp + 2u;
-                let wc0 = params.off_w + co * u32(params.w_so) + ci * u32(params.w_si);
-                let w00 = f32(wgt[wc0]);
-                let w01 = f32(wgt[wc0 + u32(params.w_sw)]);
-                let w02 = f32(wgt[wc0 + 2u * u32(params.w_sw)]);
-                let w10 = f32(wgt[wc0 + u32(params.w_sh)]);
-                let w11 = f32(wgt[wc0 + u32(params.w_sh) + u32(params.w_sw)]);
-                let w12 = f32(wgt[wc0 + u32(params.w_sh) + 2u * u32(params.w_sw)]);
-                let w20 = f32(wgt[wc0 + 2u * u32(params.w_sh)]);
-                let w21 = f32(wgt[wc0 + 2u * u32(params.w_sh) + u32(params.w_sw)]);
-                let w22 = f32(wgt[wc0 + 2u * u32(params.w_sh) + 2u * u32(params.w_sw)]);
-                acc2 += i00 * w00 + i01 * w01 + i02 * w02 + i10 * w10 + i11 * w11 + i12 * w12 + i20 * w20 + i21 * w21 + i22 * w22;
-            }}
-            if (co_grp + 3u < params.co) {{
-                let co = co_grp + 3u;
-                let wc0 = params.off_w + co * u32(params.w_so) + ci * u32(params.w_si);
-                let w00 = f32(wgt[wc0]);
-                let w01 = f32(wgt[wc0 + u32(params.w_sw)]);
-                let w02 = f32(wgt[wc0 + 2u * u32(params.w_sw)]);
-                let w10 = f32(wgt[wc0 + u32(params.w_sh)]);
-                let w11 = f32(wgt[wc0 + u32(params.w_sh) + u32(params.w_sw)]);
-                let w12 = f32(wgt[wc0 + u32(params.w_sh) + 2u * u32(params.w_sw)]);
-                let w20 = f32(wgt[wc0 + 2u * u32(params.w_sh)]);
-                let w21 = f32(wgt[wc0 + 2u * u32(params.w_sh) + u32(params.w_sw)]);
-                let w22 = f32(wgt[wc0 + 2u * u32(params.w_sh) + 2u * u32(params.w_sw)]);
-                acc3 += i00 * w00 + i01 * w01 + i02 * w02 + i10 * w10 + i11 * w11 + i12 * w12 + i20 * w20 + i21 * w21 + i22 * w22;
-            }}
-        }}
-        for (var j = 0u; j < 4u; j++) {{
-            let co = co_grp + j;
-            if (co >= params.co) {{ break; }}
-            let acc = select(select(select(acc0, acc1, j == 1u), acc2, j == 2u), acc3, j == 3u);
-            let out_i = params.off_out + u32(i32(n) * params.out_sn + i32(co) * params.out_sc + i32(oh) * params.out_sh + i32(ow) * params.out_sw);
-            var v = {t}(acc);
-{epilogue}
-            outp[out_i] = v;
-        }}
-    }}
+    // Named accumulators: an indexed private array lands in memory under Tint.
+{pixel_loops}
 }}
 "#
     ));

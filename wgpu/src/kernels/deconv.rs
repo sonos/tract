@@ -34,20 +34,6 @@ pub fn wgpu_deconv_dispatch(
         q.retain_tensor(output);
         let dt = ShaderDtype::from_datum(input.datum_type())?;
         let layout = LayoutKind::Chain(3 + extras.len() as u8);
-        let pipeline = if epilogue.is_empty() {
-            q.context().pipeline(PipelineKey {
-                module: ModuleKey { kind: ModuleKind::Deconv, dtype: dt },
-                entry: EntryPoint::typed("conv_transpose2d", dt),
-            })?
-        } else {
-            let key = ("deconv", dt, epilogue, extras.len());
-            q.context().chain_pipeline(
-                key,
-                layout,
-                EntryPoint::typed("conv_transpose2d", dt),
-                || deconv_module(dt, epilogue, extras.len()),
-            )?
-        };
         let in_shape = op.pool_spec.data_format.shape(input.shape())?;
         let out_shape = op.pool_spec.data_format.shape(output.shape())?;
         ensure!(in_shape.hw_rank() == 2, "tract-wgpu conv_transpose is 2D only");
@@ -92,6 +78,35 @@ pub fn wgpu_deconv_dispatch(
         let w_si = ws[1];
         let w_sh = ws[2];
         let w_sw = ws[3];
+        // A 2×2 stride-2 valid upsample hits exactly one tap per output pixel.
+        // The general kernel still divides to discover that, on every pixel.
+        let x2 = kh == 2
+            && kw == 2
+            && strides[0] == 2
+            && strides[1] == 2
+            && dilations[0] == 1
+            && dilations[1] == 1
+            && groups == 1
+            && padding[0].pad_before.to_usize().ok() == Some(0)
+            && padding[1].pad_before.to_usize().ok() == Some(0)
+            && padding[0].pad_after.to_usize().ok() == Some(0)
+            && padding[1].pad_after.to_usize().ok() == Some(0)
+            && oh == ih * 2
+            && ow == iw * 2;
+        let entry = if x2 { "conv_transpose2d_x2" } else { "conv_transpose2d" };
+        let pipeline = if epilogue.is_empty() && !x2 {
+            q.context().pipeline(PipelineKey {
+                module: ModuleKey { kind: ModuleKind::Deconv, dtype: dt },
+                entry: EntryPoint::typed("conv_transpose2d", dt),
+            })?
+        } else {
+            q.context().chain_pipeline(
+                ("deconv", dt, epilogue, extras.len(), x2),
+                layout,
+                EntryPoint::typed(entry, dt),
+                || deconv_module(dt, epilogue, extras.len(), x2),
+            )?
+        };
 
         let mut buffers: Vec<&crate::context::WgpuBuffer> =
             vec![get_wgpu_buffer(input), get_wgpu_buffer(weights)];
@@ -145,19 +160,20 @@ pub fn wgpu_deconv_dispatch(
         tail.extend_from_slice(&mode_extra);
         params.extend_from_slice(&pack_u32s(&tail));
         let dyn_off = q.alloc_uniform(&params)?;
-        q.dispatch("deconv", &pipeline, &bg, dyn_off, (n * co * oh * ow) as u64)
+        let label = if x2 { "deconv_x2" } else { "deconv" };
+        q.dispatch(label, &pipeline, &bg, dyn_off, (n * co * oh * ow) as u64)
     })
 }
 
 pub(crate) fn deconv_wgsl(dt: ShaderDtype) -> String {
-    deconv_module(dt, &[], 0)
+    deconv_module(dt, &[], 0, false)
 }
 
 /// The gather-based transposed convolution, with an epilogue as
 /// [`conv_module`] takes one.
 ///
 /// [`conv_module`]: crate::kernels::conv::conv_module
-pub fn deconv_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+pub fn deconv_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize, x2: bool) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
     let out_binding = 2 + extras;
@@ -173,6 +189,47 @@ pub fn deconv_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> 
         format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
     };
     let epilogue = epilogue_body(epilogue, "co");
+    let entry = if x2 { "conv_transpose2d_x2" } else { "conv_transpose2d" };
+    let reduce = if x2 {
+        r#"    let kh = oh & 1u;
+    let kw = ow & 1u;
+    let ih = oh >> 1u;
+    let iw = ow >> 1u;
+    let in_base = i32(n) * params.in_sn + i32(ih) * params.in_sh + i32(iw) * params.in_sw;
+    let w_base = i32(co) * params.w_so + i32(kh) * params.w_sh + i32(kw) * params.w_sw;
+    for (var ci = 0u; ci < params.ci_pg; ci++) {
+        let in_i = params.off_in + u32(in_base + i32(ci) * params.in_sc);
+        let w_i = params.off_w + u32(w_base + i32(ci) * params.w_si);
+        acc += f32(inp[in_i]) * f32(wgt[w_i]);
+    }"#
+    } else {
+        r#"    let g = co / params.co_pg;
+    let ci0 = g * params.ci_pg;
+    for (var kh = 0u; kh < params.kh; kh++) {
+        let ih_num = i32(oh) + params.pad_h - i32(kh) * params.dil_h;
+        if (params.stride_h == 0 || ih_num % params.stride_h != 0) { continue; }
+        let ih = ih_num / params.stride_h;
+        if (ih < 0 || ih >= i32(params.ih)) { continue; }
+        for (var kw = 0u; kw < params.kw; kw++) {
+            let iw_num = i32(ow) + params.pad_w - i32(kw) * params.dil_w;
+            if (params.stride_w == 0 || iw_num % params.stride_w != 0) { continue; }
+            let iw = iw_num / params.stride_w;
+            if (iw < 0 || iw >= i32(params.iw)) { continue; }
+            let in_base = i32(n) * params.in_sn
+                + i32(ci0) * params.in_sc
+                + ih * params.in_sh
+                + iw * params.in_sw;
+            let w_base = i32(co) * params.w_so
+                + i32(kh) * params.w_sh
+                + i32(kw) * params.w_sw;
+            for (var ci = 0u; ci < params.ci_pg; ci++) {
+                let in_i = params.off_in + u32(in_base + i32(ci) * params.in_sc);
+                let w_i = params.off_w + u32(w_base + i32(ci) * params.w_si);
+                acc += f32(inp[in_i]) * f32(wgt[w_i]);
+            }
+        }
+    }"#
+    };
     let mut s = preamble(dt);
     // Gather-based conv_transpose (ORT style). WGSL has no float atomics.
     s.push_str(&format!(
@@ -223,7 +280,7 @@ struct Params {{
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
 {lib}
 @compute @workgroup_size({WORKGROUP})
-fn conv_transpose2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+fn {entry}_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let nout = params.n * params.co * params.oh * params.ow;
     if (i >= nout) {{ return; }}
@@ -232,35 +289,8 @@ fn conv_transpose2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let oh = rest % params.oh; rest = rest / params.oh;
     let co = rest % params.co;
     let n = rest / params.co;
-    let g = co / params.co_pg;
-    let ci0 = g * params.ci_pg;
     var acc = 0.0;
-    // Which taps land on an input pixel does not depend on the channel, and
-    // finding out costs two integer divisions, so the channels run innermost.
-    for (var kh = 0u; kh < params.kh; kh++) {{
-        let ih_num = i32(oh) + params.pad_h - i32(kh) * params.dil_h;
-        if (params.stride_h == 0 || ih_num % params.stride_h != 0) {{ continue; }}
-        let ih = ih_num / params.stride_h;
-        if (ih < 0 || ih >= i32(params.ih)) {{ continue; }}
-        for (var kw = 0u; kw < params.kw; kw++) {{
-            let iw_num = i32(ow) + params.pad_w - i32(kw) * params.dil_w;
-            if (params.stride_w == 0 || iw_num % params.stride_w != 0) {{ continue; }}
-            let iw = iw_num / params.stride_w;
-            if (iw < 0 || iw >= i32(params.iw)) {{ continue; }}
-            let in_base = i32(n) * params.in_sn
-                + i32(ci0) * params.in_sc
-                + ih * params.in_sh
-                + iw * params.in_sw;
-            let w_base = i32(co) * params.w_so
-                + i32(kh) * params.w_sh
-                + i32(kw) * params.w_sw;
-            for (var ci = 0u; ci < params.ci_pg; ci++) {{
-                let in_i = params.off_in + u32(in_base + i32(ci) * params.in_sc);
-                let w_i = params.off_w + u32(w_base + i32(ci) * params.w_si);
-                acc += f32(inp[in_i]) * f32(wgt[w_i]);
-            }}
-        }}
-    }}
+{reduce}
     let out_i = params.off_out + u32(
         i32(n) * params.out_sn
         + i32(co) * params.out_sc

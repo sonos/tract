@@ -121,9 +121,14 @@ pub fn wgpu_sum_run_launch(
         let (width, height) =
             if mean { (input.shape()[first_axis + 1], input.shape()[first_axis]) } else { (k, 0) };
         let offset = element_offset(input, 0);
+        // Any four-aligned width keeps the same left-to-right f32 sum as the
+        // scalar loop. The old shape list was the Longpipe maps this was timed
+        // on; a 16-channel 72×128 pool was still on that scalar loop, one
+        // workgroup per channel, and that was the slow global pool.
         let vec4 = mean
             && dt == ShaderDtype::F16
-            && matches!((height, width, outer), (45, 80, 72 | 120) | (23, 40, 480 | 672 | 960))
+            && width.is_multiple_of(4)
+            && height <= 256
             && offset.is_multiple_of(4)
             && input.strides() == &Tensor::natural_strides(input.shape())[..];
         let wg = if vec4 && height <= 32 { 32 } else { 64 };
@@ -228,8 +233,34 @@ fn rounded_mean_wgsl(name: &str, vec4: bool, wg: u32) -> String {
         (
             "vec4<f16>",
             r#"
-        for (var x = 0u; x < params.width / 4u; x++) {
-            let v = inp[row / 4u + x];
+        var x = 0u;
+        let n4 = params.width / 4u;
+        let base = row / 4u;
+        while (x + 4u <= n4) {
+            let v0 = inp[base + x];
+            let v1 = inp[base + x + 1u];
+            let v2 = inp[base + x + 2u];
+            let v3 = inp[base + x + 3u];
+            acc += f32(v0.x);
+            acc += f32(v0.y);
+            acc += f32(v0.z);
+            acc += f32(v0.w);
+            acc += f32(v1.x);
+            acc += f32(v1.y);
+            acc += f32(v1.z);
+            acc += f32(v1.w);
+            acc += f32(v2.x);
+            acc += f32(v2.y);
+            acc += f32(v2.z);
+            acc += f32(v2.w);
+            acc += f32(v3.x);
+            acc += f32(v3.y);
+            acc += f32(v3.z);
+            acc += f32(v3.w);
+            x += 4u;
+        }
+        for (; x < n4; x++) {
+            let v = inp[base + x];
             acc += f32(v.x);
             acc += f32(v.y);
             acc += f32(v.z);
@@ -435,7 +466,14 @@ mod tests {
         use super::{wgpu_reduce_launch, wgpu_sum_run_launch};
         use tract_gpu::ops::reduce::Reducer;
         crate::wgpu_context();
-        for shape @ [n, c, h, _] in [[1, 480, 23, 40], [1, 72, 45, 80], [1, 24, 65, 19]] {
+        for shape @ [n, c, h, _] in [
+            [1, 480, 23, 40],
+            [1, 72, 45, 80],
+            [1, 24, 65, 19],
+            [1, 16, 72, 128],
+            [1, 16, 36, 64],
+            [1, 96, 9, 16],
+        ] {
             let input = Tensor::from_shape(&shape, &fill(11, shape.iter().product()))?
                 .cast_to::<f16>()?
                 .into_owned()
