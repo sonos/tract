@@ -75,6 +75,7 @@ GLOBAL = [
 
 NOT_GLOBAL = [
     "ci/affected.py",
+    ".github/scripts/pr-tripwire.js",
     "ci/docker-debian-stretch/**",
     "ci/benches.toml",
     "ci/bench-*",
