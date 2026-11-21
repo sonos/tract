@@ -292,7 +292,14 @@ function stop(message = 'Camera stopped.') {
   state.client = null;
   state.stream?.getTracks().forEach(track => track.stop());
   state.stream = null;
+  video.pause();
   video.srcObject = null;
+  // Dropping the attribute and calling load() is what lets the next Start assign
+  // the recording again. Chrome otherwise keeps the old currentSrc with readyState 0.
+  if (video.getAttribute('src')) {
+    video.removeAttribute('src');
+    video.load();
+  }
   // The composited canvas was given to the worker, so the last frame stays painted
   // there. A new canvas is empty, which is the blank tile from before the camera started.
   const previous = $('out');
@@ -342,25 +349,54 @@ async function start() {
   try {
     const size = capture($('capture').value);
     const m = model($('model').value);
-    status('Asking for the camera…');
-    const deviceId = $('camera').value;
-    const stream = await navigator.mediaDevices.getUserMedia({audio: false, video: {width: {exact: size.width}, height: {exact: size.height}, frameRate: {ideal: 30}, ...(deviceId ? {deviceId: {exact: deviceId}} : {facingMode: 'user'})}});
-    if (generation !== state.generation) return stream.getTracks().forEach(track => track.stop());
-    state.stream = stream;
-    video.srcObject = stream;
-    await video.play();
-    const track = stream.getVideoTracks()[0];
-    track.addEventListener('ended', () => generation === state.generation && stop('The camera disconnected.'), {once: true});
-    showInput(track.label);
-    const settings = stream.getVideoTracks()[0].getSettings();
-    const capturedWidth = settings.width || video.videoWidth;
-    const capturedHeight = settings.height || video.videoHeight;
+    // ?deskmem plays vcd-seated.mp4 from this directory instead of opening the camera.
+    const clipUrl = new URLSearchParams(location.search).has('deskmem') ? 'vcd-seated.mp4' : '';
+    let capturedWidth = 0;
+    let capturedHeight = 0;
+    if (clipUrl) {
+      status('Opening the recording…');
+      video.srcObject = null;
+      video.muted = true;
+      video.loop = true;
+      video.playsInline = true;
+      video.setAttribute('playsinline', '');
+      // stop() removes the src attribute and calls load(). Chrome keeps the
+      // previous currentSrc, so checking that name would skip the assignment
+      // and play() would wait forever on an empty element.
+      let ready = Promise.resolve();
+      if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) {
+        ready = new Promise((resolve, reject) => {
+          video.addEventListener('loadeddata', () => resolve(), {once: true});
+          video.addEventListener('error', () => reject(new Error('The recording did not load.')), {once: true});
+        });
+        video.src = clipUrl;
+      }
+      await Promise.all([video.play(), ready]);
+      if (generation !== state.generation) return;
+      capturedWidth = size.width || video.videoWidth;
+      capturedHeight = size.height || video.videoHeight;
+      showInput('seated clip');
+    } else {
+      status('Asking for the camera…');
+      const deviceId = $('camera').value;
+      const stream = await navigator.mediaDevices.getUserMedia({audio: false, video: {width: {exact: size.width}, height: {exact: size.height}, frameRate: {ideal: 30}, ...(deviceId ? {deviceId: {exact: deviceId}} : {facingMode: 'user'})}});
+      if (generation !== state.generation) return stream.getTracks().forEach(track => track.stop());
+      state.stream = stream;
+      video.srcObject = stream;
+      await video.play();
+      const track = stream.getVideoTracks()[0];
+      track.addEventListener('ended', () => generation === state.generation && stop('The camera disconnected.'), {once: true});
+      showInput(track.label);
+      const settings = stream.getVideoTracks()[0].getSettings();
+      capturedWidth = settings.width || video.videoWidth;
+      capturedHeight = settings.height || video.videoHeight;
+      listCameras(settings.deviceId).then(() => showInput(track.label)).catch(() => {});
+    }
     $('capture-chip').textContent = capturedWidth && capturedHeight ? `${capturedWidth} × ${capturedHeight}` : '';
-    listCameras(settings.deviceId).then(() => showInput(track.label)).catch(() => {});
     const previous = $('out');
     const output = previous.cloneNode();
-    output.width = settings.width || video.videoWidth;
-    output.height = settings.height || video.videoHeight;
+    output.width = capturedWidth;
+    output.height = capturedHeight;
     previous.replaceWith(output);
     const canvas = output.transferControlToOffscreen();
     bar(0);
@@ -488,4 +524,27 @@ if (problem) {
 } else {
   status('Ready. The first start downloads the chosen model.');
   idle();
+}
+
+// ?deskmem=640x360&model=lp-small opens on that capture and model and plays the
+// seated recording. The file is not part of the repository.
+if (new URLSearchParams(location.search).has('deskmem') && !problem) {
+  const asked = new URLSearchParams(location.search).get('deskmem');
+  const parsed = /^(\d+)x(\d+)$/.exec(asked || '');
+  const width = parsed ? Number(parsed[1]) : 640;
+  const height = parsed ? Number(parsed[2]) : 360;
+  const captureId = `${width}x${height}`;
+  if ([...$('capture').options].some(option => option.value === captureId)) {
+    $('capture').value = captureId;
+    $('capture').onchange();
+  }
+  const modelId = new URLSearchParams(location.search).get('model');
+  if (modelId && [...$('model').options].some(option => option.value === modelId)) {
+    $('model').value = modelId;
+    showScale();
+    showHold();
+  }
+  $('background').value = 'colour';
+  $('motion').checked = false;
+  go.click();
 }

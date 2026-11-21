@@ -157,7 +157,7 @@ async function command(type, payload) {
     post({status: `Preparing ${m.name} on WebGPU…`});
     segmenter = m.kind === 'rvm'
       ? await Segmenter.create_rvm(bytes, width, height, ratio)
-      : await Segmenter.create(bytes, width, height, m.mean, m.std);
+      : await Segmenter.create(bytes, width, height, m.mean, m.std, m.f16Body === true);
     const ops = audit(segmenter);
     tractDevice = segmenter.device();
     device = await (await navigator.gpu.requestAdapter({powerPreference: 'high-performance'})).requestDevice();

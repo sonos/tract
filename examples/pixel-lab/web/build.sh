@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds the deployable site into dist/: the wasm, the page and build.json. MediaPipe and the
-# fp32 RVM come from Hugging Face. prepare-models.py fetches the webcam MODNet and the
-# PP-HumanSegV2 slice and writes the fp16 RVM.
+# fp32 RVM come from Hugging Face. prepare-models.py fetches the webcam MODNet, the
+# PP-HumanSegV2 slice and the five Longpipe landscape mattes, and writes the fp16 RVM.
 #
 # Needs the wasm32-unknown-unknown target and a wasm-bindgen CLI of the version Cargo.lock pins.
 

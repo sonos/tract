@@ -3430,6 +3430,7 @@ dependencies = [
  "getrandom 0.4.3",
  "serde_json",
  "tract",
+ "tract-core",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

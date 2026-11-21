@@ -3,6 +3,7 @@
 use std::cell::{Cell, RefCell};
 
 use tract::prelude::*;
+use tract_core::knobs::KnobScope;
 use wasm_bindgen::prelude::*;
 
 fn js_error(error: anyhow::Error) -> JsValue {
@@ -182,6 +183,7 @@ impl Segmenter {
         height: u32,
         mean: Vec<f32>,
         std: Vec<f32>,
+        f16_body: Option<bool>,
     ) -> Result<Segmenter, JsValue> {
         if width == 0 || height == 0 || width > 2048 || height > 2048 {
             return Err(JsValue::from_str("Invalid segmentation resolution"));
@@ -200,7 +202,7 @@ impl Segmenter {
             .set_input_fact(0, format!("1,3,{height},{width},f32").as_str())
             .map_err(js_error)?;
         inference.set_output_fact(0, ()).map_err(js_error)?;
-        let model = inference.into_model().map_err(js_error)?;
+        let mut model = inference.into_model().map_err(js_error)?;
         if model.input_count().map_err(js_error)? != 1
             || model.output_count().map_err(js_error)? != 1
         {
@@ -212,8 +214,20 @@ impl Segmenter {
         if output != format!("1,1,{height},{width},f32") {
             return Err(JsValue::from_str(&format!("Unexpected mask shape {output}")));
         }
-        let runnable =
-            tract::runtime_for_name("wgpu").map_err(js_error)?.prepare(model).map_err(js_error)?;
+        // Longpipe keeps an f32 camera and an f32 mask. The body runs in f16,
+        // and f16 accumulation is on only while this model is prepared.
+        let f16_body = f16_body.unwrap_or(false);
+        if f16_body {
+            model.transform(r#"{"name":"f32_to_f16","keep_io":true}"#).map_err(js_error)?;
+        }
+        let runtime = tract::runtime_for_name("wgpu").map_err(js_error)?;
+        let runnable = if f16_body {
+            let scope = KnobScope::new([("TRACT_WGPU_ALLOW_F16_ACCUMULATION", "true")])
+                .map_err(js_error)?;
+            scope.enter(|| runtime.prepare(model)).map_err(js_error)?
+        } else {
+            runtime.prepare(model).map_err(js_error)?
+        };
         let graph = runnable.cost_json().map_err(js_error)?;
         let state = runnable.spawn_state().map_err(js_error)?;
         let mask = tract::WgpuMask::new(width, height).map_err(js_error)?;
