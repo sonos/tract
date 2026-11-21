@@ -24,6 +24,14 @@ test('every model is pinned and has a 16-pixel-aligned size', () => {
   assert.deepEqual(MODELS.filter(m => m.id.startsWith('modnet')).map(m => [m.id, m.width, m.height]), [
     ['modnet', 512, 288],
   ]);
+  assert.deepEqual(MODELS.filter(m => m.id.startsWith('lp-')).map(m => [m.id, m.width, m.height, m.f16Body, m.bytes, m.sha256]), [
+    ['lp-xs', 384, 240, true, 3613647, '75749759daa4d7e839e8aa189ce6a4e95edc72253b1f5028e833455ebae2f792'],
+    ['lp-small', 384, 224, true, 3613647, 'e6aca89d9df1cfe26670693eaf138d615b3b74979fe613f8f0195e9f5da14a90'],
+    ['lp-medium', 512, 320, true, 12959999, 'a0b385d6690b2d08c1e393ff2258b6f3b3065d8bee0f1ff0f0ce2d68a0ce0cf7'],
+    ['lp-large', 640, 400, true, 14209298, '2dab0b195cd712477a1549d38465e28dcca4ad05efe407c9406f08caa6c6e4da'],
+    ['lp-xl', 1280, 768, true, 29198204, '9ee02f5a73df90d5b62af667eaf57ca85a4065e7fe676e845d4a28d410f56daa'],
+  ]);
+  assert.equal(MODELS.filter(m => m.f16Body === true).length, 5);
   assert.equal(modelUrl(model('modnet')), 'models/modnet_webcam.onnx');
   assert.equal(model('modnet').bytes, 25969398);
   assert.equal(model('modnet').sha256, 'de03cc16f3c91f25b7c2f0b42ea1a8d34f40a752234f3887572655e744e55306');
@@ -43,7 +51,7 @@ test('every model is pinned and has a 16-pixel-aligned size', () => {
 
 test('the uncertain-mask hold is for the single-frame models', () => {
   for (const id of ['rvm', 'rvm-fp32']) assert.equal(holdsUncertainMask(model(id)), false);
-  for (const id of ['mediapipe', 'mediapipe-landscape', 'pp-humanseg-v2', 'modnet']) {
+  for (const id of ['mediapipe', 'mediapipe-landscape', 'pp-humanseg-v2', 'modnet', 'lp-xs', 'lp-small', 'lp-medium', 'lp-large', 'lp-xl']) {
     assert.equal(holdsUncertainMask(model(id)), true);
   }
 });
@@ -84,7 +92,11 @@ test('the model menu follows the capture aspect', () => {
   assert.equal(frameShape(1280, 720), 'landscape');
   assert.equal(frameShape(256, 256), 'square');
   assert.equal(frameShape(180, 320), 'portrait');
-  assert.deepEqual(modelsFor(1280, 720).map(entry => entry.id), ['mediapipe-landscape', 'pp-humanseg-v2', 'modnet', 'rvm', 'rvm-fp32']);
+  assert.deepEqual(modelsFor(1280, 720).map(entry => entry.id), [
+    'mediapipe-landscape', 'pp-humanseg-v2', 'modnet',
+    'lp-xs', 'lp-small', 'lp-medium', 'lp-large', 'lp-xl',
+    'rvm', 'rvm-fp32',
+  ]);
   assert.deepEqual(modelsFor(640, 360).map(entry => entry.id), modelsFor(1920, 1080).map(entry => entry.id));
   assert.deepEqual(modelsFor(256, 256).map(entry => entry.id), ['mediapipe', 'rvm', 'rvm-fp32']);
   assert.deepEqual(modelsFor(180, 320).map(entry => entry.id), ['rvm', 'rvm-fp32']);

@@ -1,8 +1,9 @@
 // The segmenters the page offers. MediaPipe and the fp32 RVM come from Hugging Face at a pinned
-// revision. prepare-models.py writes the webcam MODNet, the PP-HumanSegV2 person channel and the
-// fp16 RVM into dist/models. The fp16 file is the official graph with two Casts, so the camera
-// and the matte are float32 and the recurrent state stays float16. The PP-HumanSegV2 slice is not
-// published upstream, so it is fetched from tract-test-assets.
+// revision. prepare-models.py writes the webcam MODNet, the PP-HumanSegV2 person channel, the five
+// Longpipe landscape mattes and the fp16 RVM into dist/models. Longpipe keeps an f32 camera and an
+// f32 mask; `f16Body` runs the network in f16. The fp16 RVM file is the official graph with two
+// Casts, so the camera and the matte are float32 and the recurrent state stays float16. The
+// PP-HumanSegV2 slice is not published upstream, so it is fetched from tract-test-assets.
 // `mean` and `std` map RGB in [0, 1] to what each model was trained on.
 //
 // RVM's downsample ratio follows the camera, using the project's rule of one: the long side of
@@ -60,6 +61,76 @@ export const MODELS = [
     height: 288,
     mean: [0.5, 0.5, 0.5],
     std: [0.5, 0.5, 0.5],
+  },
+  {
+    id: 'lp-xs',
+    name: 'Longpipe xs 384 × 240',
+    note: 'static matte, fixed canvas',
+    f16Body: true,
+    url: 'models/lp_xs.onnx',
+    bytes: 3613647,
+    sha256: '75749759daa4d7e839e8aa189ce6a4e95edc72253b1f5028e833455ebae2f792',
+    source: 'https://huggingface.co/Longpipe/longpipe/blob/main/onnx/xs/matting_landscape.onnx',
+    width: 384,
+    height: 240,
+    mean: [0, 0, 0],
+    std: [1, 1, 1],
+  },
+  {
+    id: 'lp-small',
+    name: 'Longpipe small 384 × 224',
+    note: 'static matte, fixed canvas',
+    f16Body: true,
+    url: 'models/lp_small.onnx',
+    bytes: 3613647,
+    sha256: 'e6aca89d9df1cfe26670693eaf138d615b3b74979fe613f8f0195e9f5da14a90',
+    source: 'https://huggingface.co/Longpipe/longpipe/blob/main/onnx/small/matting_landscape.onnx',
+    width: 384,
+    height: 224,
+    mean: [0, 0, 0],
+    std: [1, 1, 1],
+  },
+  {
+    id: 'lp-medium',
+    name: 'Longpipe medium 512 × 320',
+    note: 'static matte, fixed canvas',
+    f16Body: true,
+    url: 'models/lp_medium.onnx',
+    bytes: 12959999,
+    sha256: 'a0b385d6690b2d08c1e393ff2258b6f3b3065d8bee0f1ff0f0ce2d68a0ce0cf7',
+    source: 'https://huggingface.co/Longpipe/longpipe/blob/main/onnx/medium/matting_landscape.onnx',
+    width: 512,
+    height: 320,
+    mean: [0, 0, 0],
+    std: [1, 1, 1],
+  },
+  {
+    id: 'lp-large',
+    name: 'Longpipe large 640 × 400',
+    note: 'static matte, fixed canvas',
+    f16Body: true,
+    url: 'models/lp_large.onnx',
+    bytes: 14209298,
+    sha256: '2dab0b195cd712477a1549d38465e28dcca4ad05efe407c9406f08caa6c6e4da',
+    source: 'https://huggingface.co/Longpipe/longpipe/blob/main/onnx/large/matting_landscape.onnx',
+    width: 640,
+    height: 400,
+    mean: [0, 0, 0],
+    std: [1, 1, 1],
+  },
+  {
+    id: 'lp-xl',
+    name: 'Longpipe xl 1280 × 768',
+    note: 'static matte, fixed canvas',
+    f16Body: true,
+    url: 'models/lp_xl.onnx',
+    bytes: 29198204,
+    sha256: '9ee02f5a73df90d5b62af667eaf57ca85a4065e7fe676e845d4a28d410f56daa',
+    source: 'https://huggingface.co/Longpipe/longpipe/blob/main/onnx/xl/matting_landscape.onnx',
+    width: 1280,
+    height: 768,
+    mean: [0, 0, 0],
+    std: [1, 1, 1],
   },
   {
     id: 'rvm',

@@ -6,9 +6,9 @@ leaves the machine.
 
 ## How it works
 
-The page offers MediaPipe, PP-HumanSegV2, webcam MODNet, and RVM in fp16 and fp32. MediaPipe and
-the fp32 RVM are fetched from Hugging Face. The others are written into `dist/models` when the
-site is built, then kept in the browser's cache:
+The page offers MediaPipe, PP-HumanSegV2, webcam MODNet, five Longpipe landscape mattes, and RVM
+in fp16 and fp32. MediaPipe and the fp32 RVM are fetched from Hugging Face. The others are written
+into `dist/models` when the site is built, then kept in the browser's cache:
 
 - MediaPipe Selfie Segmentation (0.5 MB), fast, as its
   [square](https://huggingface.co/onnx-community/mediapipe_selfie_segmentation) (256 × 256 mask)
@@ -19,6 +19,10 @@ site is built, then kept in the browser's cache:
   `prepare-models.py` downloads it from tract-test-assets while the site is built.
 - [MODNet webcam](https://github.com/yakhyo/modnet/releases/download/weights/modnet_webcam.onnx)
   (26 MB, alpha matte) at 512 × 288. `prepare-models.py` downloads it while the site is built.
+- [Longpipe](https://huggingface.co/Longpipe/longpipe) landscape mattes (MIT), xs 384 × 240,
+  small 384 × 224, medium 512 × 320, large 640 × 400, and xl 1280 × 768. The camera and the mask
+  stay float32. The body runs in float16, and float16 accumulation is enabled only while that
+  model is prepared. `prepare-models.py` downloads the five files while the site is built.
 - [RVM MobileNetV3](https://github.com/PeterL1n/RobustVideoMatting/releases/tag/v1.0.0) fp16
   (GPL-3.0, 7.5 MB). The page opens on this model. It is the official v1.0.0 fp16 graph with two
   Casts, so the camera and the matte are float32 and the recurrent state stays float16.
@@ -32,8 +36,12 @@ Both RVM files read the camera frame at the capture size. The downsample ratio i
 at scale 1. The page shows that factor for the capture size, as `R=0.4` or `R=1.0`, and does not
 offer another. The mask stays the camera size.
 
-MediaPipe, PP-HumanSegV2, and MODNet are Apache 2.0. `site/models.mjs` lists every entry with its
-source, size and input normalization.
+MediaPipe, PP-HumanSegV2, and MODNet are Apache 2.0. Longpipe is MIT. `site/models.mjs` lists every
+entry with its source, size and input normalization.
+
+`?deskmem=640x360` plays `vcd-seated.mp4` from the page directory instead of opening the camera.
+The recording is not in the repository. Stop clears that source, so the next Start can load it
+again. `&model=` selects a listed model for that capture.
 
 A worker hands camera frames to tract with `Tensor::from_canvas_normalized`, which copies a frame
 onto the GPU at the model's size and normalizes it there; the model writes its mask into an RGBA8
@@ -65,7 +73,7 @@ grows with the capture size. Camera frames stay on the GPU.
 
 The mask controls sit under the view picker. “Smooth mask edges” is on by default and stands alone:
 it softens the mask and pulls the edge onto the camera image whether or not the mask moves.
-“Hold uncertain mask” is on by default for MediaPipe and MODNet, and hidden for RVM. Once per new
+“Hold uncertain mask” is on by default for the single-frame models, and hidden for RVM. Once per new
 mask, at the mask's resolution, each new score is mixed toward the previous blended score by how
 close it sits to one half. A sure 0 or 1 replaces that history. A score near one half keeps most of
 it. The picture then shows background at or below 0.1 and solid person at or above 0.7. The next

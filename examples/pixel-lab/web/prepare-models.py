@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download the webcam MODNet and PP-HumanSegV2 ONNX files and write the RVM fp16 file the page runs.
+"""Download the webcam MODNet, PP-HumanSegV2 and Longpipe ONNX files and write the RVM fp16 file the page runs.
 
 The fp16 file is the official v1.0.0 graph with two Casts: the camera input is
 float32 and the matte output is float32. Recurrent state stays float16.
@@ -25,6 +25,14 @@ RVM_URL = (
 )
 OFFICIAL_SHA = "6a0d5ce6cc17702613be548559879b4521ed424cfe14ddc48d1acaa44d616f64"
 RVM_SHA = "84c01698359a946d2167152f378d27e59eaebc86666190ffd9b5642aba7e4e98"
+# Landscape mattes. The page keeps an f32 camera and mask and runs the body in f16.
+LONGPIPE = (
+    ("xs", "lp_xs.onnx", "75749759daa4d7e839e8aa189ce6a4e95edc72253b1f5028e833455ebae2f792"),
+    ("small", "lp_small.onnx", "e6aca89d9df1cfe26670693eaf138d615b3b74979fe613f8f0195e9f5da14a90"),
+    ("medium", "lp_medium.onnx", "a0b385d6690b2d08c1e393ff2258b6f3b3065d8bee0f1ff0f0ce2d68a0ce0cf7"),
+    ("large", "lp_large.onnx", "2dab0b195cd712477a1549d38465e28dcca4ad05efe407c9406f08caa6c6e4da"),
+    ("xl", "lp_xl.onnx", "9ee02f5a73df90d5b62af667eaf57ca85a4065e7fe676e845d4a28d410f56daa"),
+)
 
 
 def sha256(path):
@@ -87,6 +95,9 @@ def main():
     webcam = out / "modnet_webcam.onnx"
     ensure(WEBCAM_URL, webcam, WEBCAM_SHA)
     ensure(PP_URL, out / "pp_humanseg_v2.onnx", PP_SHA)
+    for tier, name, digest in LONGPIPE:
+        url = f"https://huggingface.co/Longpipe/longpipe/resolve/main/onnx/{tier}/matting_landscape.onnx"
+        ensure(url, out / name, digest)
     official = out / "rvm_mobilenetv3_fp16.official.onnx"
     page = out / "rvm_mobilenetv3_fp16.onnx"
     if not (page.is_file() and sha256(page) == RVM_SHA):
