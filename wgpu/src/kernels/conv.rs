@@ -1593,6 +1593,17 @@ fn conv2d_pixel_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 /// Threads per workgroup of the register-blocked direct convolution.
 pub const CONV_DIRECT_WG: u32 = 64;
 
+/// Spatial threads below which a long 3×3 reduction leaves the register-blocked
+/// kernel idle. A 10×16 map launches twenty threads and a 20×32 map eighty;
+/// each thread then walks every input channel. The tiled kernel splits that
+/// reduction across more workgroups than this kernel has threads.
+const DIRECT_MIN_THREADS: usize = 96;
+
+/// Reduction length, input channels times the nine taps, past which those idle
+/// launches lose. Shorter reductions stay here, including the small shapes the
+/// packed-weight test dispatches by hand.
+const DIRECT_LONG_REDUCTION: usize = 32 * 9;
+
 /// Output pixels along a row that one direct-convolution thread owns: one
 /// `vec4` of input along W feeds all of them.
 const DIRECT_PX: usize = 4;
@@ -1671,8 +1682,17 @@ fn direct_tiling(
         return None;
     }
     let tile = DirectTile::for_accumulator(f16_acc, co);
-    (tile.threads(n, oh, ow).div_ceil(CONV_DIRECT_WG as usize) <= GRID_LIMIT as usize)
-        .then_some(tile)
+    let threads = tile.threads(n, oh, ow);
+    let reduction = spec.input_channels * 9;
+    // Only step aside when the tiled kernel can take the shape. A short map
+    // with few output channels would otherwise fall through to the scalar kernel.
+    if threads < DIRECT_MIN_THREADS
+        && reduction >= DIRECT_LONG_REDUCTION
+        && tiled_applies(1, co, n * oh * ow, reduction)
+    {
+        return None;
+    }
+    (threads.div_ceil(CONV_DIRECT_WG as usize) <= GRID_LIMIT as usize).then_some(tile)
 }
 
 /// Register-blocked direct 3x3 convolution: each thread owns `DIRECT_PX`
@@ -2632,6 +2652,142 @@ mod tests {
                 gpu_vs_cpu(build(f32::datum_type())?, input)
                     .with_context(|| format!("case {i}"))?;
             }
+        }
+        Ok(())
+    }
+
+    /// A fat 3×3 on a 10×16 or 20×32 map, the Longpipe decoder shapes, leaves the
+    /// register-blocked kernel for split-K and still matches the CPU in f32 and
+    /// f16 accumulation. A 28×48 map and a wide map keep the direct kernel.
+    #[test]
+    fn fat_small_map_conv_routes_splitk() -> TractResult<()> {
+        use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+        use tract_core::ops::nn::DataFormat;
+        use tract_data::knobs::KnobScope;
+        use tract_gpu::tensor::IntoDevice;
+
+        use super::wgpu_conv_dispatch;
+
+        crate::context::wgpu_context();
+        let names = |ci: usize, co: usize, h: usize, w: usize| -> TractResult<Vec<&'static str>> {
+            let halves = |seed: u64, len: usize, scale: f32| {
+                fill(seed, len).into_iter().map(|v| f16::from_f32(v * scale)).collect::<Vec<_>>()
+            };
+            let input =
+                Tensor::from_shape(&[1, ci, h, w], &halves(1, ci * h * w, 0.05))?.into_device()?;
+            let weights = Tensor::from_shape(&[co, ci, 3, 3], &halves(2, co * ci * 9, 0.02))?
+                .into_device()?;
+            let bias = Tensor::from_shape(&[co], &halves(3, co, 0.1))?.into_device()?;
+            let output =
+                tract_gpu::tensor::DeviceTensor::uninitialized_dt(DatumType::F16, &[1, co, h, w])?;
+            let op = Conv {
+                pool_spec: PoolSpec {
+                    data_format: DataFormat::NCHW,
+                    kernel_shape: tvec![3, 3],
+                    padding: PaddingSpec::Explicit(tvec![1, 1], tvec![1, 1]),
+                    dilations: None,
+                    strides: Some(tvec![1, 1]),
+                    input_channels: ci,
+                    output_channels: co,
+                },
+                kernel_fmt: KernelFormat::OIHW,
+                group: 1,
+                q_params: None,
+            };
+            let epilogue = [crate::kernels::shaders::ChainStep::Binary {
+                op: "add".into(),
+                rhs: 1,
+                swapped: false,
+            }];
+            let (_, profile) = crate::with_wgpu_queue(|queue| {
+                queue.profile(|| {
+                    wgpu_conv_dispatch(
+                        &op,
+                        &epilogue,
+                        &input,
+                        &weights,
+                        &[&bias],
+                        &output,
+                        true,
+                        None,
+                        None,
+                    )
+                })
+            })?;
+            Ok(profile.into_iter().map(|(name, _)| name).collect())
+        };
+        for (ci, co, h, w) in [
+            (168usize, 64usize, 10usize, 16usize),
+            (64, 64, 10, 16),
+            (88, 32, 20, 32),
+            (32, 32, 20, 32),
+        ] {
+            let got = names(ci, co, h, w)?;
+            ensure!(
+                got.iter().any(|name| name.starts_with("conv_splitk")),
+                "{ci}->{co} {h}x{w} stayed on {got:?}"
+            );
+        }
+        for (ci, co) in [(88usize, 32usize), (32, 32)] {
+            let got = names(ci, co, 28, 48)?;
+            ensure!(
+                got.contains(&"conv_direct"),
+                "{ci}->{co} at 28×48 left the direct kernel: {got:?}"
+            );
+        }
+        let wide = names(32, 16, 180, 320)?;
+        ensure!(wide.contains(&"conv_direct"), "wide map left the direct kernel: {wide:?}");
+
+        let rt = tract_core::runtime::runtime_for_name("wgpu")?.context("no wgpu runtime")?;
+        for (ci, co, h, w, f16_acc) in [
+            (168usize, 64usize, 10usize, 16usize, false),
+            (168, 64, 10, 16, true),
+            (88, 32, 20, 32, true),
+            (32, 32, 20, 32, true),
+        ] {
+            let values = |seed, shape: &[usize]| -> TractResult<Tensor> {
+                let scaled: Vec<f32> =
+                    fill(seed, shape.iter().product()).iter().map(|v| v * 0.02).collect();
+                Ok(Tensor::from_shape(shape, &scaled)?
+                    .cast_to::<f16>()?
+                    .cast_to::<f32>()?
+                    .into_owned())
+            };
+            let input = values(3, &[1, ci, h, w])?;
+            let build = |dt: DatumType| -> TractResult<TypedModel> {
+                let mut model = TypedModel::default();
+                let x = model.add_source("x", dt.fact([1, ci, h, w]))?;
+                let k = model
+                    .add_const("k", values(1, &[co, ci, 3, 3])?.cast_to_dt(dt)?.into_owned())?;
+                let b = model.add_const("b", values(2, &[co])?.cast_to_dt(dt)?.into_owned())?;
+                let conv = Conv {
+                    pool_spec: PoolSpec {
+                        data_format: DataFormat::NCHW,
+                        kernel_shape: tvec![3, 3],
+                        padding: PaddingSpec::Explicit(tvec![1, 1], tvec![1, 1]),
+                        dilations: None,
+                        strides: Some(tvec![1, 1]),
+                        input_channels: ci,
+                        output_channels: co,
+                    },
+                    kernel_fmt: KernelFormat::OIHW,
+                    group: 1,
+                    q_params: None,
+                };
+                let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+                model.select_output_outlets(&[y])?;
+                Ok(model)
+            };
+            let allow = if f16_acc { "true" } else { "false" };
+            let scope = KnobScope::new([("TRACT_WGPU_ALLOW_F16_ACCUMULATION", allow)])?;
+            let gpu = scope.enter(|| rt.prepare(build(f16::datum_type())?))?;
+            let got = gpu.run(tvec!(input.cast_to::<f16>()?.into_owned().into()))?.remove(0);
+            let cpu = Arc::new(SimplePlan::new(build(f32::datum_type())?)?);
+            let expected = cpu.run(tvec!(input.into()))?.remove(0);
+            let expected = expected.cast_to::<f16>()?.into_owned();
+            got.into_tensor()
+                .close_enough(&expected, Approximation::Approximate)
+                .with_context(|| format!("{ci}->{co} {h}x{w} f16_accumulation={f16_acc}"))?;
         }
         Ok(())
     }
