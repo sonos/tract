@@ -37,6 +37,65 @@ fn as_u32_i32(v: i32) -> u32 {
     v as u32
 }
 
+/// Channels-last 3x3, stride 1 or 2, at most 20 output channels. Wider layers
+/// stay on the tiled kernel, and stride 3 stays on the scalar kernel: both
+/// were faster there.
+#[allow(clippy::too_many_arguments)]
+fn thin_nhwc_pixel(
+    channels_last: u32,
+    groups: usize,
+    kh: usize,
+    kw: usize,
+    dilations: &[usize],
+    strides: &[usize],
+    co: usize,
+    pixels: usize,
+) -> bool {
+    let stride_ok = matches!(strides, [1, 1] | [2, 2]);
+    let dil_ok = matches!(dilations, [1, 1]);
+    channels_last == 1
+        && groups == 1
+        && kh == 3
+        && kw == 3
+        && dil_ok
+        && stride_ok
+        && co <= 20
+        && pixels.div_ceil(CONV_PIXEL_WG as usize) <= 65535
+}
+
+/// Packed `[co, 9, ci]` weights, channels innermost and a multiple of 4. One
+/// thread owns four output channels at one pixel and both sides load as
+/// `vec4` along C. Sixteen input channels is the smallest width where the
+/// scalar pixel kernel was still far from that schedule.
+fn pixel_vec_ready(
+    packed: Option<&DeviceTensor>,
+    input: &DeviceTensor,
+    output: &DeviceTensor,
+    ci: usize,
+    in_strides: [usize; 4],
+    out_strides: [usize; 4],
+) -> bool {
+    let Some(packed) = packed else { return false };
+    let &[co, taps, packed_ci] = packed.shape() else { return false };
+    let aligned = |strides: [usize; 4]| {
+        strides[1] == 1
+            && strides[3].is_multiple_of(4)
+            && (strides[0] == 0 || strides[0].is_multiple_of(4))
+            && strides[2].is_multiple_of(4)
+    };
+    ci >= 16
+        && ci.is_multiple_of(4)
+        && packed_ci == ci
+        && co.is_multiple_of(4)
+        && co <= 20
+        && taps == 9
+        && aligned(in_strides)
+        && aligned(out_strides)
+        && element_offset(input, 0).is_multiple_of(4)
+        && element_offset(output, 0).is_multiple_of(4)
+        && element_offset(packed, 0).is_multiple_of(4)
+}
+
 /// One filter per channel, no cross-channel sum: the tiled kernel applies, in
 /// either data format, since it addresses input and output through their strides.
 fn depthwise_shape(op: &Conv) -> Option<DepthwiseShape> {
@@ -197,6 +256,7 @@ pub fn wgpu_conv_dispatch(
     f16_accumulation: bool,
     packed_weights: Option<&DeviceTensor>,
     packed_tile: Option<DirectTile>,
+    pixel_packed: Option<&DeviceTensor>,
 ) -> TractResult<()> {
     with_wgpu_queue(|q| {
         q.retain_tensor(input);
@@ -282,42 +342,72 @@ pub fn wgpu_conv_dispatch(
         }
         let direct = direct.map(|tile| if packed { packed_tile.unwrap_or(tile) } else { tile });
         let pixels = n * oh * ow;
-        let tiled = direct.is_none() && tiled_applies(groups, co_pg, pixels, ci_pg * kh * kw);
+        let out_sn = *out_shape.n_stride().unwrap_or(&0);
+        let out_sc = *out_shape.c_stride();
+        let out_sh = out_shape.hw_strides()[0];
+        let out_sw = out_shape.hw_strides()[1];
+        let out_strides = [out_sn, out_sc, out_sh, out_sw];
+        // Channels-last 3x3 stems with a handful of output channels were one
+        // thread per output value. One thread per pixel, reusing the nine taps
+        // across those channels, is the faster schedule there. A layer the
+        // tiled GEMM already claims stays there unless the vec4 kernel is packed.
+        let thin_nhwc = thin_nhwc_pixel(
+            channels_last,
+            groups,
+            kh,
+            kw,
+            dilations.as_ref(),
+            strides.as_ref(),
+            co_pg,
+            pixels,
+        );
+        let pixel_vec = thin_nhwc
+            && pixel_vec_ready(pixel_packed, input, output, ci, in_strides, out_strides)
+            && (pixels * (co / 4)).div_ceil(CONV_PIXEL_WG as usize) <= 65535;
+        let tiled =
+            direct.is_none() && !pixel_vec && tiled_applies(groups, co_pg, pixels, ci_pg * kh * kw);
         let tile_m = tile_rows(co_pg);
         // The per-pixel kernel unrolls 3x3 taps at dilation 1 and wants every
         // output channel of a pixel from one thread. With one thread per pixel
         // it only keeps the device busy when that thread's work is a stem's,
         // or when the pixels alone are enough threads.
         let per_pixel = direct.is_none()
+            && !pixel_vec
             && !tiled
-            && channels_last == 0
-            && groups == 1
-            && kh == 3
-            && kw == 3
-            && dilations[0] == 1
-            && dilations[1] == 1
-            && (ci * co <= 64 || pixels >= 32768)
+            && (thin_nhwc
+                || (channels_last == 0
+                    && groups == 1
+                    && kh == 3
+                    && kw == 3
+                    && dilations[0] == 1
+                    && dilations[1] == 1
+                    && (ci * co <= 64 || pixels >= 32768)))
             && pixels.div_ceil(CONV_PIXEL_WG as usize) <= 65535;
         let in_sn = *in_shape.n_stride().unwrap_or(&0);
         let in_sc = *in_shape.c_stride();
         let in_sh = in_shape.hw_strides()[0];
         let in_sw = in_shape.hw_strides()[1];
-        let out_sn = *out_shape.n_stride().unwrap_or(&0);
-        let out_sc = *out_shape.c_stride();
-        let out_sh = out_shape.hw_strides()[0];
-        let out_sw = out_shape.hw_strides()[1];
 
-        // OIHW: [co, ci_pg, kh, kw]
-        let ws = weights.strides();
-        ensure!(ws.len() >= 4, "expected 4D OIHW kernel, got {:?}", weights.shape());
-        let w_so = ws[0];
-        let w_si = ws[1];
-        let w_sh = ws[2];
-        let w_sw = ws[3];
+        // OIHW: [co, ci_pg, kh, kw]. The vec4 pixel kernel replaces that buffer
+        // with weights packed [co, 9, ci].
+        let weight_buf = if pixel_vec {
+            let packed = pixel_packed.unwrap();
+            q.retain_tensor(packed);
+            packed
+        } else {
+            weights
+        };
+        let (w_so, w_si, w_sh, w_sw) = if pixel_vec {
+            (0isize, 0, 0, 0)
+        } else {
+            let ws = weights.strides();
+            ensure!(ws.len() >= 4, "expected 4D OIHW kernel, got {:?}", weights.shape());
+            (ws[0], ws[1], ws[2], ws[3])
+        };
 
         let params = pack_u32s(&[
             element_offset(input, 0) as u32,
-            element_offset(weights, 0) as u32,
+            element_offset(weight_buf, 0) as u32,
             element_offset(output, 0) as u32,
             n as u32,
             ci as u32,
@@ -381,6 +471,13 @@ pub fn wgpu_conv_dispatch(
                 EntryPoint::typed(entry, dt),
                 || conv_direct_module(dt, f16_acc, epilogue, extras.len(), tile, packed),
             )?
+        } else if pixel_vec {
+            q.context().chain_pipeline(
+                ("conv_pixel_vec", dt, f16_acc, epilogue, extras.len()),
+                layout,
+                EntryPoint::typed("conv2d_pixel_vec", dt),
+                || conv_pixel_vec_module(dt, f16_acc, epilogue, extras.len()),
+            )?
         } else if tiled {
             q.context().chain_pipeline(
                 ("conv_tiled", tile_m, dt, epilogue, extras.len()),
@@ -413,7 +510,7 @@ pub fn wgpu_conv_dispatch(
         };
 
         let mut buffers: Vec<&crate::context::WgpuBuffer> =
-            vec![get_wgpu_buffer(input), get_wgpu_buffer(weights)];
+            vec![get_wgpu_buffer(input), get_wgpu_buffer(weight_buf)];
         buffers.extend(extras.iter().map(|t| get_wgpu_buffer(t)));
         buffers.push(get_wgpu_buffer(output));
         let bg = q.context().bind_group(layout, &buffers, q.uniform())?;
@@ -426,6 +523,11 @@ pub fn wgpu_conv_dispatch(
             ];
             let label = if packed { "conv_direct_packed_weights" } else { "conv_direct" };
             return q.dispatch_grid(label, &pipeline, &bg, dyn_off, grid);
+        }
+        if pixel_vec {
+            let threads = pixels * (co / 4);
+            let groups = threads.div_ceil(CONV_PIXEL_WG as usize) as u32;
+            return q.dispatch_grid("conv_pixel_vec", &pipeline, &bg, dyn_off, [groups, 1, 1]);
         }
         if tiled {
             return q.dispatch_grid("conv_tiled", &pipeline, &bg, dyn_off, tiled_grid);
@@ -1424,7 +1526,8 @@ pub const CONV_PIXEL_WG: u32 = 256;
 /// pixel reads are shared by all its channels, so they are read once per group
 /// of four rather than once per output element. The kernel came out of an
 /// OpenEvolve search over tract's own conv contract (3.0x on the stem, seed
-/// 115us); the taps are unrolled for kh = kw = 3 at dilation 1.
+/// 115us); the taps are unrolled for kh = kw = 3 at dilation 1. Channels-last
+/// layers of at most 20 output channels take it too.
 pub fn conv_pixel_module(
     dt: ShaderDtype,
     epilogue: &[ChainStep],
@@ -1713,6 +1816,158 @@ fn {entry}_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let iw0 = i32(ow) * params.stride_w - params.pad_w;
     // Named accumulators: an indexed private array lands in memory under Tint.
 {pixel_loops}
+}}
+"#
+    ));
+    s
+}
+
+/// One thread owns four adjacent output channels at one pixel. The nine taps
+/// are outside the channel loop: a tap that misses the input is skipped, and
+/// a tap that hits streams `vec4`s along C, one input load dotted into all
+/// four accumulators. Weights are `[co, 9, ci]`, the same order as a
+/// channels-last `[co, 3, 3, ci]` filter. Serves the shapes
+/// [`pixel_vec_ready`] admits. f16 sums in f16 when the accumulation knob is
+/// on, and in f32 otherwise.
+fn conv_pixel_vec_module(
+    dt: ShaderDtype,
+    f16_accumulation: bool,
+    epilogue: &[ChainStep],
+    extras: usize,
+) -> String {
+    let t = dt.wgsl();
+    let a = if dt == ShaderDtype::F16 && f16_accumulation { t } else { "f32" };
+    let suf = dt.suffix();
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
+    };
+    let mut taps = String::new();
+    for (tap, (dy, dx)) in
+        [(0i32, 0i32), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2), (2, 0), (2, 1), (2, 2)]
+            .iter()
+            .enumerate()
+    {
+        taps.push_str(&format!(
+            r#"
+        {{
+            let ih = ih0 + {dy};
+            let iw = iw0 + {dx};
+            if (ih >= 0 && ih < i32(params.ih) && iw >= 0 && iw < i32(params.iw)) {{
+                let s = u32(i32(params.off_in) + i32(n) * params.in_sn + ih * params.in_sh + iw * params.in_sw);
+                let base = s / 4u;
+                for (var ci4 = 0u; ci4 < params.ci / 4u; ci4++) {{
+                    let x = vec4<{a}>(inp[base + ci4]);
+                    acc0 += dot(x, w4(co_grp + 0u, {tap}u, ci4));
+                    acc1 += dot(x, w4(co_grp + 1u, {tap}u, ci4));
+                    acc2 += dot(x, w4(co_grp + 2u, {tap}u, ci4));
+                    acc3 += dot(x, w4(co_grp + 3u, {tap}u, ci4));
+                }}
+            }}
+        }}
+"#
+        ));
+    }
+    let mut store = String::new();
+    for j in 0..4 {
+        let body = epilogue_body(epilogue, "co");
+        store.push_str(&format!(
+            r#"
+        {{
+            let co = co_grp + {j}u;
+            var v = v{j};
+{body}            v{j} = v;
+        }}
+"#
+        ));
+    }
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_w: u32,
+    off_out: u32,
+    n: u32,
+    ci: u32,
+    co: u32,
+    ih: u32,
+    iw: u32,
+    oh: u32,
+    ow: u32,
+    kh: u32,
+    kw: u32,
+    groups: u32,
+    ci_pg: u32,
+    co_pg: u32,
+    channels_last: u32,
+    pad_h: i32,
+    pad_w: i32,
+    stride_h: i32,
+    stride_w: i32,
+    dil_h: i32,
+    dil_w: i32,
+    in_sn: i32,
+    in_sc: i32,
+    in_sh: i32,
+    in_sw: i32,
+    w_so: i32,
+    w_si: i32,
+    w_sh: i32,
+    w_sw: i32,
+    out_sn: i32,
+    out_sc: i32,
+    out_sh: i32,
+    out_sw: i32,
+    _pad: vec2<u32>,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<vec4<{t}>>;
+@group(0) @binding(1) var<storage, read> wgt: array<vec4<{t}>>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<vec4<{t}>>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+fn w4(oc: u32, tap: u32, ci4: u32) -> vec4<{a}> {{
+    let i = params.off_w / 4u + (oc * 9u + tap) * (params.ci / 4u) + ci4;
+    return vec4<{a}>(wgt[i]);
+}}
+
+@compute @workgroup_size({CONV_PIXEL_WG})
+fn conv2d_pixel_vec_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let idx = gid.x;
+    let nvec = params.co / 4u;
+    let npix = params.n * params.oh * params.ow;
+    let pix = idx / nvec;
+    if (pix >= npix) {{ return; }}
+    let co_grp = (idx % nvec) * 4u;
+    var rest = pix;
+    let ow = rest % params.ow; rest /= params.ow;
+    let oh = rest % params.oh; rest /= params.oh;
+    let n = rest;
+    let ih0 = i32(oh) * params.stride_h - params.pad_h;
+    let iw0 = i32(ow) * params.stride_w - params.pad_w;
+    var acc0 = {a}(0.0);
+    var acc1 = {a}(0.0);
+    var acc2 = {a}(0.0);
+    var acc3 = {a}(0.0);
+{taps}
+    var v0 = {t}(acc0);
+    var v1 = {t}(acc1);
+    var v2 = {t}(acc2);
+    var v3 = {t}(acc3);
+{store}
+    let out_i = params.off_out + u32(i32(n) * params.out_sn + i32(co_grp) * params.out_sc + i32(oh) * params.out_sh + i32(ow) * params.out_sw);
+    outp[out_i / 4u] = vec4<{t}>(v0, v1, v2, v3);
 }}
 "#
     ));
@@ -2119,6 +2374,61 @@ mod tests {
                 .with_context(|| format!("n{n} ci{ci} co{co} {h}x{w} s{stride} p{pad}"))?;
         }
         Ok(())
+    }
+
+    /// Channels-last 3x3 layers with few output channels take the same per-pixel
+    /// kernel, including a 16-channel map large enough that the tiled GEMM would
+    /// otherwise claim it. Stride 1 and 2, f32 and f16.
+    #[test]
+    fn conv_3x3_per_pixel_nhwc() -> TractResult<()> {
+        use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+        use tract_core::ops::nn::DataFormat;
+        let build = |dt: DatumType, ci: usize, co: usize, h: usize, w: usize, stride: usize| {
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", dt.fact([1, h, w, ci]))?;
+            let k = model.add_const(
+                "k",
+                Tensor::from_shape(&[co, ci, 3, 3], &fill(3, co * ci * 9))?
+                    .cast_to_dt(dt)?
+                    .into_owned(),
+            )?;
+            let b = model.add_const(
+                "b",
+                Tensor::from_shape(&[co], &fill(4, co))?.cast_to_dt(dt)?.into_owned(),
+            )?;
+            let conv = Conv {
+                pool_spec: PoolSpec {
+                    data_format: DataFormat::NHWC,
+                    kernel_shape: tvec![3, 3],
+                    padding: PaddingSpec::Explicit(tvec![1, 1], tvec![1, 1]),
+                    dilations: None,
+                    strides: Some(tvec![stride, stride]),
+                    input_channels: ci,
+                    output_channels: co,
+                },
+                kernel_fmt: KernelFormat::OIHW,
+                group: 1,
+                q_params: None,
+            };
+            let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+            model.select_output_outlets(&[y])?;
+            Ok(model)
+        };
+        for (ci, co, h, w, stride) in
+            [(40usize, 20usize, 18usize, 20usize, 1usize), (3, 4, 24, 32, 2), (32, 16, 120, 120, 1)]
+        {
+            let model = build(DatumType::F32, ci, co, h, w, stride)?;
+            gpu_vs_cpu(model, Tensor::from_shape(&[1, h, w, ci], &fill(5, h * w * ci))?)
+                .with_context(|| format!("f32 {ci}->{co} {h}x{w} s{stride}"))?;
+        }
+        let (ci, co, h, w) = (40usize, 20usize, 18usize, 20usize);
+        let input = Tensor::from_shape(&[1, h, w, ci], &fill(5, h * w * ci))?;
+        f16_vs_f32(|dt| build(dt, ci, co, h, w, 1), input.clone(), Approximation::Approximate)?;
+        let scope =
+            tract_data::knobs::KnobScope::new([("TRACT_WGPU_ALLOW_F16_ACCUMULATION", "true")])?;
+        scope.enter(|| {
+            f16_vs_f32(|dt| build(dt, ci, co, h, w, 1), input, Approximation::Approximate)
+        })
     }
 
     /// A qualifying dense stride-1 3x3 conv rewrites to Winograd F(4,3): a
@@ -2661,6 +2971,7 @@ mod tests {
                 true,
                 None,
                 None,
+                None,
             )?;
             wgpu_conv_dispatch(
                 &op,
@@ -2672,6 +2983,7 @@ mod tests {
                 true,
                 Some(&packed),
                 Some(DirectTile { co: 8, rows }),
+                None,
             )?;
             crate::with_wgpu_queue(|q| q.flush())?;
             let scalar = scalar_out.to_host()?;
@@ -2840,6 +3152,7 @@ mod tests {
                         &[&bias],
                         &output,
                         true,
+                        None,
                         None,
                         None,
                     )

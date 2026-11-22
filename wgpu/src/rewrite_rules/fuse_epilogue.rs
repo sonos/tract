@@ -93,6 +93,7 @@ pub fn fuse_conv_epilogue(
         f16_accumulation: op.f16_accumulation,
         packed_weights: op.packed_weights.clone(),
         packed_tile: op.packed_tile,
+        pixel_packed: op.pixel_packed.clone(),
     })
 }
 
