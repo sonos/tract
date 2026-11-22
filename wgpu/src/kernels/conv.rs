@@ -392,12 +392,13 @@ pub fn wgpu_conv_dispatch(
             // Four output channels re-read the same 3×3 patch. Holding every
             // channel (at most 16) loads that patch once per input channel.
             let wide = ci <= 4 && co <= 16;
+            let vec4_acc = co >= 6;
             let entry = if wide { "conv2d_pixel_wide" } else { "conv2d_pixel" };
             q.context().chain_pipeline(
-                ("conv_pixel", dt, epilogue, extras.len(), wide),
+                ("conv_pixel", dt, epilogue, extras.len(), wide, vec4_acc),
                 layout,
                 EntryPoint::typed(entry, dt),
-                || conv_pixel_module(dt, epilogue, extras.len(), wide),
+                || conv_pixel_module(dt, epilogue, extras.len(), wide, vec4_acc),
             )?
         } else if epilogue.is_empty() {
             q.context().pipeline(PipelineKey {
@@ -1429,6 +1430,7 @@ pub fn conv_pixel_module(
     epilogue: &[ChainStep],
     extras: usize,
     wide: bool,
+    vec4_acc: bool,
 ) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
@@ -1446,11 +1448,127 @@ pub fn conv_pixel_module(
     };
     let epilogue = epilogue_body(epilogue, "co");
     let entry = if wide { "conv2d_pixel_wide" } else { "conv2d_pixel" };
-    let nacc: usize = if wide { 16 } else { 4 };
-    let acc_decls: String = (0..nacc).map(|j| format!("        var acc{j} = 0.0;\n")).collect();
-    let tap = |j: usize, co_expr: &str| {
+    let store_one = |co_expr: &str, acc: &str| {
         format!(
-            r#"                let wc0 = params.off_w + ({co_expr}) * u32(params.w_so) + ci * u32(params.w_si);
+            r#"            let co = {co_expr};
+            let out_i = params.off_out + u32(i32(n) * params.out_sn + i32(co) * params.out_sc + i32(oh) * params.out_sh + i32(ow) * params.out_sw);
+            var v = {t}({acc});
+{epilogue}
+            outp[out_i] = v;
+"#
+        )
+    };
+    // Wide loads the nine taps once per input channel. The grouped form re-reads
+    // them for every four output channels, which is the whole stem at co = 16.
+    let pixel_loops = if vec4_acc {
+        let lanes = ["x", "y", "z", "w"];
+        // Weight offsets of the nine 3x3 taps from a channel's filter base.
+        let woffs = [
+            "",
+            " + u32(params.w_sw)",
+            " + 2u * u32(params.w_sw)",
+            " + u32(params.w_sh)",
+            " + u32(params.w_sh) + u32(params.w_sw)",
+            " + u32(params.w_sh) + 2u * u32(params.w_sw)",
+            " + 2u * u32(params.w_sh)",
+            " + 2u * u32(params.w_sh) + u32(params.w_sw)",
+            " + 2u * u32(params.w_sh) + 2u * u32(params.w_sw)",
+        ];
+        let itaps = ["i00", "i01", "i02", "i10", "i11", "i12", "i20", "i21", "i22"];
+        // Four output channels share one vec4 accumulator; each lane performs
+        // the same ops the scalar form did for its channel. Channel indices
+        // clamp to `co - 1` so out-of-range lanes read valid weights; their
+        // stores are guarded per lane.
+        let vec_group = |acc: &str, chans: [&str; 4]| {
+            let mut s = String::new();
+            for (l, ch) in chans.iter().enumerate() {
+                s.push_str(&format!(
+                    "            let wc{l} = params.off_w + min({ch}, params.co - 1u) * u32(params.w_so) + ci * u32(params.w_si);\n"
+                ));
+            }
+            for (p, off) in woffs.iter().enumerate() {
+                let loads =
+                    (0..4).map(|l| format!("f32(wgt[wc{l}{off}])")).collect::<Vec<_>>().join(", ");
+                s.push_str(&format!("            let w{p}v = vec4<f32>({loads});\n"));
+            }
+            let terms = itaps
+                .iter()
+                .enumerate()
+                .map(|(p, it)| format!("vec4<f32>({it}) * w{p}v"))
+                .collect::<Vec<_>>()
+                .join(" + ");
+            s.push_str(&format!("            {acc} = {acc} + ({terms});\n"));
+            s
+        };
+        if wide {
+            let acc_decls: String =
+                (0..4).map(|g| format!("    var acc{g} = vec4<f32>(0.0);\n")).collect();
+            let groups: String = (0..4)
+                .map(|g| {
+                    let ch: Vec<String> = (0..4).map(|l| format!("{}u", g * 4 + l)).collect();
+                    let ch: [&str; 4] =
+                        [ch[0].as_str(), ch[1].as_str(), ch[2].as_str(), ch[3].as_str()];
+                    format!(
+                        "        if ({}u < params.co) {{\n{}\n        }}\n",
+                        g * 4,
+                        vec_group(&format!("acc{g}"), ch)
+                    )
+                })
+                .collect();
+            let stores: String = (0..16)
+                .map(|c| {
+                    format!(
+                        "        if ({c}u < params.co) {{\n{}}}\n",
+                        store_one(&format!("{c}u"), &format!("acc{}.{}", c / 4, lanes[c % 4]))
+                    )
+                })
+                .collect();
+            format!(
+                "{acc_decls}    for (var ci = 0u; ci < params.ci; ci++) {{\n        \
+let i00 = read_inp(ih0, iw0, ci, n);\n        \
+let i01 = read_inp(ih0, iw0 + 1, ci, n);\n        \
+let i02 = read_inp(ih0, iw0 + 2, ci, n);\n        \
+let i10 = read_inp(ih0 + 1, iw0, ci, n);\n        \
+let i11 = read_inp(ih0 + 1, iw0 + 1, ci, n);\n        \
+let i12 = read_inp(ih0 + 1, iw0 + 2, ci, n);\n        \
+let i20 = read_inp(ih0 + 2, iw0, ci, n);\n        \
+let i21 = read_inp(ih0 + 2, iw0 + 1, ci, n);\n        \
+let i22 = read_inp(ih0 + 2, iw0 + 2, ci, n);\n\
+{groups}    }}\n{stores}"
+            )
+        } else {
+            let group_body =
+                vec_group("acc", ["co_grp", "co_grp + 1u", "co_grp + 2u", "co_grp + 3u"]);
+            let group_stores: String = (0..4)
+                .map(|l| {
+                    format!(
+                        "        if (co_grp + {l}u < params.co) {{\n{}}}\n",
+                        store_one(&format!("co_grp + {l}u"), &format!("acc.{}", lanes[l]))
+                    )
+                })
+                .collect();
+            format!(
+                "    for (var co_grp = 0u; co_grp < params.co; co_grp += 4u) {{\n        \
+var acc = vec4<f32>(0.0);\n        \
+for (var ci = 0u; ci < params.ci; ci++) {{\n            \
+let i00 = read_inp(ih0, iw0, ci, n);\n            \
+let i01 = read_inp(ih0, iw0 + 1, ci, n);\n            \
+let i02 = read_inp(ih0, iw0 + 2, ci, n);\n            \
+let i10 = read_inp(ih0 + 1, iw0, ci, n);\n            \
+let i11 = read_inp(ih0 + 1, iw0 + 1, ci, n);\n            \
+let i12 = read_inp(ih0 + 1, iw0 + 2, ci, n);\n            \
+let i20 = read_inp(ih0 + 2, iw0, ci, n);\n            \
+let i21 = read_inp(ih0 + 2, iw0 + 1, ci, n);\n            \
+let i22 = read_inp(ih0 + 2, iw0 + 2, ci, n);\n\
+{group_body}        }}\n{group_stores}    }}\n"
+            )
+        }
+    } else {
+        let nacc: usize = if wide { 16 } else { 4 };
+        let acc_decls: String = (0..nacc).map(|j| format!("        var acc{j} = 0.0;\n")).collect();
+        let tap = |j: usize, co_expr: &str| {
+            format!(
+                r#"                let wc0 = params.off_w + ({co_expr}) * u32(params.w_so) + ci * u32(params.w_si);
                 let w00 = f32(wgt[wc0]);
                 let w01 = f32(wgt[wc0 + u32(params.w_sw)]);
                 let w02 = f32(wgt[wc0 + 2u * u32(params.w_sw)]);
@@ -1462,39 +1580,27 @@ pub fn conv_pixel_module(
                 let w22 = f32(wgt[wc0 + 2u * u32(params.w_sh) + 2u * u32(params.w_sw)]);
                 acc{j} += i00 * w00 + i01 * w01 + i02 * w02 + i10 * w10 + i11 * w11 + i12 * w12 + i20 * w20 + i21 * w21 + i22 * w22;
 "#
-        )
-    };
-    let macs: String = (0..nacc)
-        .map(|j| {
-            format!(
-                "            if ({j}u < params.co) {{\n{}\n            }}\n",
-                tap(j, &format!("{j}u"))
             )
-        })
-        .collect();
-    let store_one = |co_expr: &str, acc: &str| {
-        format!(
-            r#"            let co = {co_expr};
-            let out_i = params.off_out + u32(i32(n) * params.out_sn + i32(co) * params.out_sc + i32(oh) * params.out_sh + i32(ow) * params.out_sw);
-            var v = {t}({acc});
-{epilogue}
-            outp[out_i] = v;
-"#
-        )
-    };
-    let stores: String = (0..nacc)
-        .map(|j| {
+        };
+        if wide {
+            let macs: String = (0..nacc)
+                .map(|j| {
+                    format!(
+                        "            if ({j}u < params.co) {{\n{}\n            }}\n",
+                        tap(j, &format!("{j}u"))
+                    )
+                })
+                .collect();
+            let stores: String = (0..nacc)
+                .map(|j| {
+                    format!(
+                        "        if ({j}u < params.co) {{\n{}}}\n",
+                        store_one(&format!("{j}u"), &format!("acc{j}"))
+                    )
+                })
+                .collect();
             format!(
-                "        if ({j}u < params.co) {{\n{}}}\n",
-                store_one(&format!("{j}u"), &format!("acc{j}"))
-            )
-        })
-        .collect();
-    // Wide loads the nine taps once per input channel. The grouped form re-reads
-    // them for every four output channels, which is the whole stem at co = 16.
-    let pixel_loops = if wide {
-        format!(
-            "{acc_decls}    for (var ci = 0u; ci < params.ci; ci++) {{\n        \
+                "{acc_decls}    for (var ci = 0u; ci < params.ci; ci++) {{\n        \
 let i00 = read_inp(ih0, iw0, ci, n);\n        \
 let i01 = read_inp(ih0, iw0 + 1, ci, n);\n        \
 let i02 = read_inp(ih0, iw0 + 2, ci, n);\n        \
@@ -1505,26 +1611,26 @@ let i20 = read_inp(ih0 + 2, iw0, ci, n);\n        \
 let i21 = read_inp(ih0 + 2, iw0 + 1, ci, n);\n        \
 let i22 = read_inp(ih0 + 2, iw0 + 2, ci, n);\n\
 {macs}    }}\n{stores}"
-        )
-    } else {
-        let group_macs: String = (0..4)
-            .map(|j| {
-                format!(
-                    "            if (co_grp + {j}u < params.co) {{\n{}\n            }}\n",
-                    tap(j, &format!("co_grp + {j}u"))
-                )
-            })
-            .collect();
-        let group_stores: String = (0..4)
-            .map(|j| {
-                format!(
-                    "        if (co_grp + {j}u < params.co) {{\n{}}}\n",
-                    store_one(&format!("co_grp + {j}u"), &format!("acc{j}"))
-                )
-            })
-            .collect();
-        format!(
-            "    for (var co_grp = 0u; co_grp < params.co; co_grp += 4u) {{\n        \
+            )
+        } else {
+            let group_macs: String = (0..4)
+                .map(|j| {
+                    format!(
+                        "            if (co_grp + {j}u < params.co) {{\n{}\n            }}\n",
+                        tap(j, &format!("co_grp + {j}u"))
+                    )
+                })
+                .collect();
+            let group_stores: String = (0..4)
+                .map(|j| {
+                    format!(
+                        "        if (co_grp + {j}u < params.co) {{\n{}}}\n",
+                        store_one(&format!("co_grp + {j}u"), &format!("acc{j}"))
+                    )
+                })
+                .collect();
+            format!(
+                "    for (var co_grp = 0u; co_grp < params.co; co_grp += 4u) {{\n        \
 var acc0 = 0.0;\n        var acc1 = 0.0;\n        var acc2 = 0.0;\n        var acc3 = 0.0;\n        \
 for (var ci = 0u; ci < params.ci; ci++) {{\n            \
 let i00 = read_inp(ih0, iw0, ci, n);\n            \
@@ -1537,7 +1643,8 @@ let i20 = read_inp(ih0 + 2, iw0, ci, n);\n            \
 let i21 = read_inp(ih0 + 2, iw0 + 1, ci, n);\n            \
 let i22 = read_inp(ih0 + 2, iw0 + 2, ci, n);\n\
 {group_macs}        }}\n{group_stores}    }}\n"
-        )
+            )
+        }
     };
     let mut s = preamble(dt);
     // Same packed params as `conv_module`, see kernels/conv.rs.
@@ -1984,6 +2091,8 @@ mod tests {
             (2, 3, 8, 20, 30, 2, 1),
             (1, 7, 5, 13, 17, 1, 1),
             (1, 4, 6, 9, 9, 1, 0),
+            (1, 3, 4, 18, 26, 2, 1),
+            (1, 8, 8, 15, 21, 1, 1),
         ] {
             let mut model = TypedModel::default();
             let x = model.add_source("x", f32::fact([n, ci, h, w]))?;
