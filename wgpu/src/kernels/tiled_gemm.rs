@@ -76,10 +76,8 @@ pub(crate) fn tiled_gemm_core_with_accumulator(
 "
     );
     for i in 0..tm {
-        for j in 0..tn {
-            let zero = if accumulator == "f32" { "0.0" } else { "f16(0.0)" };
-            s += &format!("    var c{i}_{j} = {zero};\n");
-        }
+        let zero = if accumulator == "f32" { "vec4<f32>(0.0)" } else { "vec4<f16>(0.0)" };
+        s += &format!("    var c{i} = {zero};\n");
     }
     let k_prologue = if k_prologue.is_empty() {
         String::new()
@@ -131,17 +129,18 @@ pub(crate) fn tiled_gemm_core_with_accumulator(
             "            let b{sub} = vec4<{accumulator}>(b_tile[(kq * 4u + {sub}u) * {tile4}u + tx]);\n"
         );
         for i in 0..tm {
-            for (j, cj) in ["x", "y", "z", "w"].iter().enumerate() {
-                s += &format!("            c{i}_{j} = fma(a{i}.{comp}, b{sub}.{cj}, c{i}_{j});\n");
-            }
+            s += &format!(
+                "            c{i} = fma(vec4<{accumulator}>(a{i}.{comp}), b{sub}, c{i});\n"
+            );
         }
     }
     s += "        }\n        workgroupBarrier();\n    }\n";
     s += &format!("    let r = row0 + ty * {tm}u;\n    let c = col0 + tx * {tn}u;\n");
     for i in 0..tm {
         for j in 0..tn {
+            let cj = ["x", "y", "z", "w"][j];
             let value =
-                if accumulator == "f32" { format!("c{i}_{j}") } else { format!("f32(c{i}_{j})") };
+                if accumulator == "f32" { format!("c{i}.{cj}") } else { format!("f32(c{i}.{cj})") };
             s += &format!("    store_out({store_args}r + {i}u, c + {j}u, {value});\n");
         }
     }
