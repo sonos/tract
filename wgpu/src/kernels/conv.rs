@@ -817,11 +817,11 @@ impl DepthwiseShape {
     }
 }
 
-/// Channels-last 3×3 depthwise whose threads walk channels. One thread owns four
+/// Channels-last depthwise whose threads walk channels. One thread owns four
 /// adjacent channels and four output columns, so a subgroup reads one pixel's
 /// channels contiguously. Below 32 channels that subgroup is only partly full
 /// and the spatial kernel is faster, which is the full-resolution stage of
-/// these segmenters. 5×5 stays there too until it has its own measurement.
+/// these segmenters.
 fn depthwise_channel_tiling(
     channels_last: bool,
     shape: DepthwiseShape,
@@ -832,8 +832,8 @@ fn depthwise_channel_tiling(
     offsets: [usize; 2],
 ) -> bool {
     if !channels_last
-        || shape.kh > 3
-        || shape.kw > 3
+        || shape.kh > 5
+        || shape.kw > 5
         || co < 32
         || !co.is_multiple_of(DIRECT_PX)
         || in_strides[1] != 1
@@ -3048,7 +3048,7 @@ mod tests {
             [0, 0],
         ));
         let wide = super::DepthwiseShape { kh: 5, kw: 5, ..shape };
-        ensure!(!super::depthwise_channel_tiling(
+        ensure!(super::depthwise_channel_tiling(
             true,
             wide,
             72,
@@ -3057,22 +3057,34 @@ mod tests {
             strides(8, 8, 72),
             [0, 0],
         ));
+        let wider = super::DepthwiseShape { kh: 7, kw: 7, ..shape };
+        ensure!(!super::depthwise_channel_tiling(
+            true,
+            wider,
+            72,
+            [1, 8, 8],
+            strides(8, 8, 72),
+            strides(8, 8, 72),
+            [0, 0],
+        ));
 
-        // n, c, h, w, stride, dilation, pad, f16
+        // ks, n, c, h, w, stride, dilation, pad, f16
         let cases = [
-            (1usize, 32usize, 15usize, 18usize, 1usize, 1usize, 1usize, false),
-            (1, 32, 17, 13, 2, 1, 1, false),
-            (2, 64, 12, 20, 1, 1, 1, false),
-            (1, 36, 9, 8, 1, 1, 1, false),
-            (1, 72, 8, 7, 1, 1, 0, false),
-            (1, 32, 10, 10, 1, 2, 2, false),
-            (1, 48, 11, 14, 2, 1, 1, true),
-            (1, 16, 15, 18, 1, 1, 1, false),
+            (3usize, 1usize, 32usize, 15usize, 18usize, 1usize, 1usize, 1usize, false),
+            (3, 1, 32, 17, 13, 2, 1, 1, false),
+            (3, 2, 64, 12, 20, 1, 1, 1, false),
+            (3, 1, 36, 9, 8, 1, 1, 1, false),
+            (3, 1, 72, 8, 7, 1, 1, 0, false),
+            (3, 1, 32, 10, 10, 1, 2, 2, false),
+            (3, 1, 48, 11, 14, 2, 1, 1, true),
+            (3, 1, 16, 15, 18, 1, 1, 1, false),
+            (5, 1, 32, 15, 18, 1, 1, 2, false),
+            (5, 1, 40, 12, 16, 2, 1, 2, true),
         ];
-        for (i, (n, c, h, w, stride, dilation, pad, f16_)) in cases.into_iter().enumerate() {
+        for (i, (ks, n, c, h, w, stride, dilation, pad, f16_)) in cases.into_iter().enumerate() {
             let hw = [h, w];
             let shape = DataFormat::NHWC.from_n_c_hw(n, c, hw)?.shape.to_vec();
-            let k_shape = [c, 1, 3, 3];
+            let k_shape = [c, 1, ks, ks];
             let values = |seed, dims: &[usize]| -> TractResult<Tensor> {
                 let t = Tensor::from_shape(dims, &fill(seed, dims.iter().product()))?;
                 Ok(if f16_ { t.cast_to::<f16>()?.cast_to::<f32>()?.into_owned() } else { t })
@@ -3086,7 +3098,7 @@ mod tests {
                 let conv = Conv {
                     pool_spec: PoolSpec {
                         data_format: DataFormat::NHWC,
-                        kernel_shape: tvec![3, 3],
+                        kernel_shape: tvec![ks, ks],
                         padding: PaddingSpec::Explicit(tvec![pad, pad], tvec![pad, pad]),
                         dilations: Some(tvec![dilation, dilation]),
                         strides: Some(tvec![stride, stride]),
