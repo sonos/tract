@@ -48,8 +48,9 @@ use tract_core::transform::ModelTransform;
 pub use memory::WgpuTurnHandler;
 
 pub use crate::context::{
-    CACHE_STATS, KernelTime, WgpuContext, WgpuQueue, try_wgpu_context, wgpu_context,
-    wgpu_context_async, wgpu_context_created, with_wgpu_queue,
+    CACHE_STATS, KernelTime, WgpuBuffer, WgpuContext, WgpuQueue, set_dispatch_capture,
+    take_dispatch_labels, try_wgpu_context, wgpu_context, wgpu_context_async, wgpu_context_created,
+    with_wgpu_queue,
 };
 pub use crate::coverage::{UncoveredOp, ensure_wgpu_coverage, mid_graph_readbacks, uncovered_ops};
 pub use crate::jspi::{hybrid_fallback_available, jspi_in_browser};

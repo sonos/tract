@@ -31,6 +31,7 @@ pub mod scaled_masked_softmax;
 pub mod sdpa;
 pub mod shaders;
 pub mod softmax;
+pub mod subgroup;
 pub mod tiled_gemm;
 pub mod topk;
 
@@ -52,6 +53,16 @@ pub fn all_pipeline_keys(shader_f16: bool) -> Vec<shaders::PipelineKey> {
     keys.extend(softmax::all_pipeline_keys(shader_f16));
     keys
 }
+
+tract_core::declare_knob!(
+    scopable TRACT_WGPU_SUBGROUPS,
+    bool,
+    false,
+    "Experimental subgroup GEMV and subgroup-matrix GEMM. Off by default. Read when the device \
+     is created, so a device opened without it cannot use the feature later, and read again at \
+     dispatch. Sizes and tiles come from the adapter: Chrome, Dawn, native wgpu, and WebKit each \
+     advertise a different set. f16 matrix tiles also require TRACT_WGPU_ALLOW_F16_ACCUMULATION."
+);
 
 tract_core::declare_knob!(
     scopable TRACT_WGPU_ALLOW_F16_ACCUMULATION,

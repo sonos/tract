@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::ffi::c_void;
 use std::mem::ManuallyDrop;
 use std::num::NonZeroU64;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock, Weak};
 use tract_core::tract_linalg::block_quant::BlockQuantStorage;
 
@@ -34,6 +35,22 @@ pub const UNIFORM_ALIGN: u64 = 256;
 const UNIFORM_SLOTS: u64 = 256;
 const UNIFORM_BYTES: u64 = UNIFORM_ALIGN * UNIFORM_SLOTS;
 const WORKGROUP: u32 = 64;
+
+static DISPATCH_CAPTURE: AtomicBool = AtomicBool::new(false);
+
+std::thread_local! {
+    static DISPATCH_LABELS: RefCell<Vec<&'static str>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Record kernel labels passed to [`WgpuQueue::dispatch_grid`]. Off by default.
+pub fn set_dispatch_capture(on: bool) {
+    DISPATCH_CAPTURE.store(on, Ordering::Relaxed);
+}
+
+/// Labels recorded since the previous take.
+pub fn take_dispatch_labels() -> Vec<&'static str> {
+    DISPATCH_LABELS.with(|labels| std::mem::take(&mut *labels.borrow_mut()))
+}
 
 /// Bind groups kept between frames before the cache is dropped wholesale.
 const BIND_GROUP_CACHE_CAP: usize = 8192;
@@ -150,6 +167,7 @@ struct WgpuContextInner {
     device: wgpu::Device,
     queue: wgpu::Queue,
     shader_f16: bool,
+    subgroup_caps: crate::kernels::subgroup::SubgroupCaps,
     modules: RwLock<HashMap<ModuleKey, wgpu::ShaderModule>>,
     pipelines: RwLock<HashMap<PipelineKey, (Arc<wgpu::ComputePipeline>, u32)>>,
     /// Keyed by [`ProgramKey`], the pair of hashes of whatever names a
@@ -238,12 +256,35 @@ struct BindGroupKey {
 
 impl std::fmt::Debug for WgpuContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("WgpuContext").field("shader_f16", &self.inner.shader_f16).finish()
+        f.debug_struct("WgpuContext")
+            .field("shader_f16", &self.inner.shader_f16)
+            .field("subgroups", &self.inner.subgroup_caps)
+            .finish()
     }
 }
 
 impl WgpuContext {
-    async fn create_device() -> TractResult<(wgpu::Device, wgpu::Queue, bool)> {
+    async fn request_adapter_device(
+        adapter: &wgpu::Adapter,
+        limits: wgpu::Limits,
+        features: wgpu::Features,
+        experimental: wgpu::ExperimentalFeatures,
+    ) -> TractResult<(wgpu::Device, wgpu::Queue)> {
+        adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("tract-wgpu"),
+                required_features: features,
+                required_limits: limits,
+                memory_hints: wgpu::MemoryHints::Performance,
+                trace: wgpu::Trace::Off,
+                experimental_features: experimental,
+            })
+            .await
+            .map_err(|e| anyhow!("request_device failed: {e}"))
+    }
+
+    async fn create_device()
+    -> TractResult<(wgpu::Device, wgpu::Queue, bool, crate::kernels::subgroup::SubgroupCaps)> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -264,38 +305,103 @@ impl WgpuContext {
         );
 
         let shader_f16 = adapter.features().contains(wgpu::Features::SHADER_F16);
-        let mut features = wgpu::Features::empty();
+        let mut base = wgpu::Features::empty();
         if shader_f16 {
-            features |= wgpu::Features::SHADER_F16;
+            base |= wgpu::Features::SHADER_F16;
         }
         if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
-            features |= wgpu::Features::TIMESTAMP_QUERY;
+            base |= wgpu::Features::TIMESTAMP_QUERY;
         }
 
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("tract-wgpu"),
-                required_features: features,
-                required_limits: adapter.limits(),
-                memory_hints: wgpu::MemoryHints::Performance,
-                trace: wgpu::Trace::Off,
-                experimental_features: wgpu::ExperimentalFeatures::disabled(),
-            })
-            .await
-            .map_err(|e| anyhow!("request_device failed: {e}"))?;
-        Ok((device, queue, shader_f16))
+        let want = crate::kernels::TRACT_WGPU_SUBGROUPS.get();
+        #[cfg(target_arch = "wasm32")]
+        crate::kernels::subgroup::prepare_wasm_request(want);
+
+        // The web backend cannot request these bits. Dawn learns them from the
+        // JS hook above. Native wgpu can, and the matrix feature is experimental.
+        #[cfg(target_arch = "wasm32")]
+        let (requested, experimental, with_subgroup, with_matrix) =
+            (base, wgpu::ExperimentalFeatures::disabled(), false, false);
+        #[cfg(not(target_arch = "wasm32"))]
+        let (requested, experimental, with_subgroup, with_matrix) = {
+            let mut requested = base;
+            let mut experimental = wgpu::ExperimentalFeatures::disabled();
+            let mut with_subgroup = false;
+            let mut with_matrix = false;
+            if want {
+                if adapter.features().contains(wgpu::Features::SUBGROUP) {
+                    requested |= wgpu::Features::SUBGROUP;
+                    with_subgroup = true;
+                }
+                if adapter.features().contains(wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX) {
+                    requested |= wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX;
+                    // SAFETY: the token only unlocks the cooperative-matrix feature
+                    // the adapter already advertised. Kernels use a tile from that
+                    // list and fall back when the request itself fails.
+                    experimental = unsafe { wgpu::ExperimentalFeatures::enabled() };
+                    with_matrix = true;
+                }
+            }
+            (requested, experimental, with_subgroup, with_matrix)
+        };
+
+        let limits = adapter.limits();
+        let mut attempts = vec![(requested, experimental)];
+        if with_matrix {
+            let mut slim = requested;
+            slim.remove(wgpu::Features::EXPERIMENTAL_COOPERATIVE_MATRIX);
+            attempts.push((slim, wgpu::ExperimentalFeatures::disabled()));
+        }
+        if with_subgroup || with_matrix {
+            attempts.push((base, wgpu::ExperimentalFeatures::disabled()));
+        }
+        let n = attempts.len();
+        let mut chosen = None;
+        for (i, (features, experimental)) in attempts.into_iter().enumerate() {
+            match Self::request_adapter_device(&adapter, limits.clone(), features, experimental)
+                .await
+            {
+                Ok(pair) => {
+                    chosen = Some(pair);
+                    break;
+                }
+                Err(e) if i + 1 == n => return Err(e),
+                Err(e) => log::warn!(
+                    "tract-wgpu: device request with subgroup features failed ({e}); retrying without them"
+                ),
+            }
+        }
+        let (device, queue) = chosen.ok_or_else(|| anyhow!("request_device produced no device"))?;
+        #[cfg(target_arch = "wasm32")]
+        let caps = crate::kernels::subgroup::caps_from_wasm(&device, shader_f16);
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut caps = crate::kernels::subgroup::caps_from_native(&device, &adapter, shader_f16);
+        #[cfg(not(target_arch = "wasm32"))]
+        if caps.subgroups
+            && caps.fixed_size == 0
+            && let Some(size) =
+                crate::kernels::subgroup::probe_fixed_size(&device, &queue, caps.max_size).await
+            && size >= caps.min_size
+            && size <= caps.max_size
+        {
+            caps.fixed_size = size;
+        }
+        log::info!("tract-wgpu: subgroup caps {caps:?}");
+        Ok((device, queue, shader_f16, caps))
     }
 
     fn from_device(
         device: wgpu::Device,
         queue: wgpu::Queue,
         shader_f16: bool,
+        subgroup_caps: crate::kernels::subgroup::SubgroupCaps,
     ) -> TractResult<Self> {
         let ctxt = Self {
             inner: Arc::new(WgpuContextInner {
                 device,
                 queue,
                 shader_f16,
+                subgroup_caps,
                 modules: RwLock::new(HashMap::new()),
                 pipelines: RwLock::new(HashMap::new()),
                 chain_pipelines: RwLock::new(HashMap::new()),
@@ -322,14 +428,14 @@ impl WgpuContext {
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let (device, queue, shader_f16) = pollster::block_on(Self::create_device())?;
-            Self::from_device(device, queue, shader_f16)
+            let (device, queue, shader_f16, caps) = pollster::block_on(Self::create_device())?;
+            Self::from_device(device, queue, shader_f16, caps)
         }
     }
 
     pub async fn new_async() -> TractResult<Self> {
-        let (device, queue, shader_f16) = Self::create_device().await?;
-        Self::from_device(device, queue, shader_f16)
+        let (device, queue, shader_f16, caps) = Self::create_device().await?;
+        Self::from_device(device, queue, shader_f16, caps)
     }
 
     pub fn device(&self) -> &wgpu::Device {
@@ -342,6 +448,10 @@ impl WgpuContext {
 
     pub fn shader_f16(&self) -> bool {
         self.inner.shader_f16
+    }
+
+    pub fn subgroup_caps(&self) -> &crate::kernels::subgroup::SubgroupCaps {
+        &self.inner.subgroup_caps
     }
 
     pub fn timestamps(&self) -> bool {
@@ -1352,6 +1462,9 @@ impl WgpuQueue {
         if groups.contains(&0) {
             return Ok(());
         }
+        if DISPATCH_CAPTURE.load(Ordering::Relaxed) {
+            DISPATCH_LABELS.with(|labels| labels.borrow_mut().push(label));
+        }
         self.pending.borrow_mut().push(Dispatch {
             label,
             pipeline: pipeline.clone(),
@@ -1433,6 +1546,13 @@ impl WgpuQueue {
             });
             crate::wasm_record::tract_record_pass(&bytes);
         }
+    }
+
+    /// Submits queued compute without the copy that follows. Dawn completes
+    /// `mapAsync` on the mapped buffer's last usage serial, so the copy has to
+    /// be its own command buffer or that wait includes the whole model.
+    pub fn submit_before_copy(&self) {
+        self.submit_frame();
     }
 
     /// Records `copy_buffer_to_buffer` behind the pending work and flushes the
