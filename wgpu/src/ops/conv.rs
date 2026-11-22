@@ -146,13 +146,15 @@ fn packed_pixel_weights(
         return Ok(None);
     }
     let co = spec.output_channels;
-    let Some([_, _, _, ci]) = input.shape.as_concrete() else {
-        return Ok(None);
-    };
-    if *ci < 16 || !ci.is_multiple_of(4) || !co.is_multiple_of(4) || co > 20 {
+    if input.shape.rank() != 4 {
         return Ok(None);
     }
-    let ci = *ci;
+    let Some(ci) = input.shape.last().and_then(|d| d.to_usize().ok()) else {
+        return Ok(None);
+    };
+    if ci < 16 || !ci.is_multiple_of(4) || !co.is_multiple_of(4) || co > 20 {
+        return Ok(None);
+    }
     let Some(weights) = weight.konst.as_ref() else {
         return Ok(None);
     };
