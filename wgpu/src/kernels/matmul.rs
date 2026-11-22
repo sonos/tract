@@ -291,6 +291,24 @@ fn wgpu_matmul_dispatch_impl(
             "matmul output shape {out_shape:?} does not match its inputs"
         );
         let prefix: usize = out_shape[..out_shape.len() - 2].iter().product();
+        if crate::kernels::subgroup::try_dispatch(
+            q,
+            t,
+            epilogue,
+            a,
+            b,
+            extras,
+            output,
+            dt,
+            f16_accumulation,
+            m,
+            k,
+            n,
+            prefix,
+            out_shape,
+        )? {
+            return Ok(());
+        }
         // The other kernels tile `m`, so a single row never reaches them.
         let gemv = m == 1 && prefix > 0 && n > 0;
         // The other kernels tile `n`, so a single column never reaches them.
