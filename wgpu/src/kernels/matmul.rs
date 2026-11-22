@@ -15,7 +15,7 @@ use crate::kernels::shaders::{
     rpad8_dims, rpad8_strides, unary_ops_wgsl,
 };
 use crate::kernels::tiled_gemm::{
-    MATMUL_TILE, TILED_THREADS, tile_rows, tiled_gemm_core, tiled_gemm_tiles,
+    MATMUL_TILE, TILED_THREADS, tile_rows, tiled_gemm_core_vec4, tiled_gemm_tiles,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
@@ -432,7 +432,7 @@ fn wgpu_matmul_dispatch_impl(
         } else if tiled {
             q.context().chain_pipeline(
                 ("matmul_tiled", tile_m, dt, epilogue, extras.len()),
-                layout,
+                LayoutKind::Chain(5 + extras.len() as u8),
                 EntryPoint::typed("matmul_tiled", dt),
                 || matmul_tiled_module(dt, epilogue, extras.len(), tile_m),
             )?
@@ -504,8 +504,21 @@ fn wgpu_matmul_dispatch_impl(
             return q.dispatch_grid(gemv_n_name, &pipeline, &bg, dyn_off, [x, y, 1]);
         }
         if tiled {
+            let mut tiled_buffers: Vec<&crate::context::WgpuBuffer> = vec![
+                get_wgpu_buffer(a),
+                get_wgpu_buffer(b),
+                get_wgpu_buffer(a),
+                get_wgpu_buffer(b),
+            ];
+            tiled_buffers.extend(extras.iter().map(|t| get_wgpu_buffer(t)));
+            tiled_buffers.push(get_wgpu_buffer(output));
+            let tiled_bg = q.context().bind_group(
+                LayoutKind::Chain(5 + extras.len() as u8),
+                &tiled_buffers,
+                q.uniform(),
+            )?;
             let grid = [n.div_ceil(MATMUL_TILE) as u32, m.div_ceil(tile_m) as u32, prefix as u32];
-            return q.dispatch_grid("matmul_tiled", &pipeline, &bg, dyn_off, grid);
+            return q.dispatch_grid("matmul_tiled", &pipeline, &tiled_bg, dyn_off, grid);
         }
         q.dispatch("matmul", &pipeline, &bg, dyn_off, (prefix * m * n) as u64)
     })
@@ -1149,11 +1162,11 @@ pub fn matmul_tiled_module(
 ) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
-    let out_binding = 2 + extras;
-    let uniform_binding = 3 + extras;
+    let out_binding = 4 + extras;
+    let uniform_binding = 5 + extras;
     let extra_bindings = (0..extras)
         .map(|i| {
-            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 4 + i)
         })
         .collect::<String>();
     let lib = if epilogue.is_empty() {
@@ -1193,6 +1206,8 @@ struct Params {{
 
 @group(0) @binding(0) var<storage, read> a: array<{t}>;
 @group(0) @binding(1) var<storage, read> b: array<{t}>;
+@group(0) @binding(2) var<storage, read> a4: array<vec4<{t}>>;
+@group(0) @binding(3) var<storage, read> b4: array<vec4<{t}>>;
 {extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
 {lib}
@@ -1249,13 +1264,19 @@ fn matmul_tiled_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgr
 "#,
         tiles = tiled_gemm_tiles(t, tile_m),
         threads = TILED_THREADS,
-        core = tiled_gemm_core(
+        core = tiled_gemm_core_vec4(
             t,
             "a_col_s == 1u",
             "b_col_s == 1u",
             "o_i, o_row_s, o_col_s, ",
-            "",
-            tile_m
+            tile_m,
+            "f32",
+            [
+                "a_col_s == 1u && (a_i & 3u) == 0u && (a_row_s & 3u) == 0u",
+                "a_row_s == 1u && (a_i & 3u) == 0u && (a_col_s & 3u) == 0u",
+                "b_col_s == 1u && (b_i & 3u) == 0u && (b_row_s & 3u) == 0u",
+                "b_row_s == 1u && (b_i & 3u) == 0u && (b_col_s & 3u) == 0u",
+            ],
         ),
     ));
     s
@@ -1898,6 +1919,8 @@ mod tests {
             (1, 20, 960, 40, true, false, false, false, false),
             (1, 112, 40, 130, false, false, false, false, false),
             (1, 112, 40, 130, true, true, true, false, false),
+            (1, 64, 32, 96, true, true, true, true, false),
+            (1, 64, 32, 96, false, false, false, true, false),
         ] {
             let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
             let a_shape = [prefix, if ta { k } else { m }, if ta { m } else { k }];
