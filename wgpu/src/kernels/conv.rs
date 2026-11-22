@@ -37,9 +37,8 @@ fn as_u32_i32(v: i32) -> u32 {
     v as u32
 }
 
-/// Channels-last 3x3, stride 1 or 2, at most 20 output channels. Wider layers
-/// stay on the tiled kernel, and stride 3 stays on the scalar kernel: both
-/// were faster there.
+/// Channels-last, ungrouped 3x3, dilation 1, stride 1 or 2, `co <= 20`, and a
+/// pixel count that fits one dispatch dimension.
 #[allow(clippy::too_many_arguments)]
 fn thin_nhwc_pixel(
     channels_last: u32,
@@ -63,10 +62,9 @@ fn thin_nhwc_pixel(
         && pixels.div_ceil(CONV_PIXEL_WG as usize) <= 65535
 }
 
-/// Packed `[co, 9, ci]` weights, channels innermost and a multiple of 4. One
-/// thread owns four output channels at one pixel and both sides load as
-/// `vec4` along C. Sixteen input channels is the smallest width where the
-/// scalar pixel kernel was still far from that schedule.
+/// Whether the vec4 pixel kernel applies: packed `[co, 9, ci]` weights,
+/// `ci >= 16`, `ci` and `co` multiples of 4, `co <= 20`, channel stride 1,
+/// and all other strides and buffer offsets 4-aligned.
 fn pixel_vec_ready(
     packed: Option<&DeviceTensor>,
     input: &DeviceTensor,
@@ -347,10 +345,8 @@ pub fn wgpu_conv_dispatch(
         let out_sh = out_shape.hw_strides()[0];
         let out_sw = out_shape.hw_strides()[1];
         let out_strides = [out_sn, out_sc, out_sh, out_sw];
-        // Channels-last 3x3 stems with a handful of output channels were one
-        // thread per output value. One thread per pixel, reusing the nine taps
-        // across those channels, is the faster schedule there. A layer the
-        // tiled GEMM already claims stays there unless the vec4 kernel is packed.
+        // Thin channels-last 3x3 layers use the per-pixel kernel. Only the
+        // packed vec4 variant takes priority over tiled GEMM.
         let thin_nhwc = thin_nhwc_pixel(
             channels_last,
             groups,
@@ -1719,9 +1715,10 @@ fn {entry}_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 /// are outside the channel loop: a tap that misses the input is skipped, and
 /// a tap that hits streams `vec4`s along C, one input load dotted into all
 /// four accumulators. Weights are `[co, 9, ci]`, the same order as a
-/// channels-last `[co, 3, 3, ci]` filter. Serves the shapes
-/// [`pixel_vec_ready`] admits. f16 sums in f16 when the accumulation knob is
-/// on, and in f32 otherwise.
+/// channels-last `[co, 3, 3, ci]` filter. Out-of-bounds taps are skipped, not
+/// multiplied by zero, so non-finite weights do not reach border outputs.
+/// Serves the shapes [`pixel_vec_ready`] admits. f16 sums in f16 when the
+/// accumulation knob is on, and in f32 otherwise.
 fn conv_pixel_vec_module(
     dt: ShaderDtype,
     f16_accumulation: bool,
@@ -2305,10 +2302,26 @@ mod tests {
             model.select_output_outlets(&[y])?;
             Ok(model)
         };
-        for (ci, co, h, w, stride) in
-            [(40usize, 20usize, 18usize, 20usize, 1usize), (3, 4, 24, 32, 2), (32, 16, 120, 120, 1)]
-        {
+        for (ci, co, h, w, stride) in [
+            (40usize, 20usize, 18usize, 20usize, 1usize),
+            (3, 4, 24, 32, 2),
+            (32, 16, 120, 120, 1),
+            (16, 8, 33, 31, 2),
+        ] {
             let model = build(DatumType::F32, ci, co, h, w, stride)?;
+            let mut inspected = model.clone();
+            WgpuTransform.transform(&mut inspected)?;
+            let convs = inspected
+                .nodes()
+                .iter()
+                .filter_map(|n| n.op_as::<crate::ops::conv::WgpuConv>())
+                .collect::<Vec<_>>();
+            ensure!(convs.len() == 1, "expected one WgpuConv for {ci}->{co} {h}x{w} s{stride}");
+            let vec4 = ci >= 16 && ci % 4 == 0 && co % 4 == 0 && co <= 20;
+            ensure!(
+                convs[0].pixel_packed.is_some() == vec4,
+                "packed pixel weights mismatch for {ci}->{co} {h}x{w} s{stride}"
+            );
             gpu_vs_cpu(model, Tensor::from_shape(&[1, h, w, ci], &fill(5, h * w * ci))?)
                 .with_context(|| format!("f32 {ci}->{co} {h}x{w} s{stride}"))?;
         }
