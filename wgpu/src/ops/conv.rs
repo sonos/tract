@@ -45,6 +45,7 @@ pub fn wire_wgpu_conv(
     let f16_accumulation = crate::kernels::TRACT_WGPU_ALLOW_F16_ACCUMULATION.get();
     let (packed_weights, packed_tile) =
         packed_direct_weights(facts[0], facts[1], op, f16_accumulation)?.unzip();
+    let pixel_packed = packed_pixel_weights(facts[0], facts[1], op)?;
     let mut conv_wire = target.wire_node(
         if need_bias { &conv_name } else { &node.name },
         WgpuConv {
@@ -53,6 +54,7 @@ pub fn wire_wgpu_conv(
             f16_accumulation,
             packed_weights,
             packed_tile,
+            pixel_packed,
         },
         &inputs[0..2],
     )?[0];
@@ -123,6 +125,70 @@ fn packed_direct_weights(
     Ok(Some((crate::transform::convert_const(&host)?, tile)))
 }
 
+/// Packs a thin channels-last 3×3 as `[co, 9, ci]`, channels innermost, so one
+/// tap is a run of `vec4`s. Absent means the scalar per-pixel kernel, or the
+/// tiled kernel when that one already applies.
+fn packed_pixel_weights(
+    input: &TypedFact,
+    weight: &TypedFact,
+    op: &Conv,
+) -> TractResult<Option<Const>> {
+    if op.group != 1 || op.kernel_fmt != KernelFormat::OIHW {
+        return Ok(None);
+    }
+    let spec = &op.pool_spec;
+    if spec.data_format != DataFormat::NHWC || spec.kernel_shape[..] != [3, 3] {
+        return Ok(None);
+    }
+    let strides = spec.strides();
+    let dilations = spec.dilations();
+    if !matches!(strides.as_ref(), [1, 1] | [2, 2]) || !matches!(dilations.as_ref(), [1, 1]) {
+        return Ok(None);
+    }
+    let co = spec.output_channels;
+    let Some([_, _, _, ci]) = input.shape.as_concrete() else {
+        return Ok(None);
+    };
+    if *ci < 16 || !ci.is_multiple_of(4) || !co.is_multiple_of(4) || co > 20 {
+        return Ok(None);
+    }
+    let ci = *ci;
+    let Some(weights) = weight.konst.as_ref() else {
+        return Ok(None);
+    };
+    if weights.shape() != [co, ci, 3, 3] || !weights.has_plain_ram_storage() {
+        return Ok(None);
+    }
+    let ram = weights.try_as_plain_ram()?;
+    let host = match ram.datum_type() {
+        DatumType::F32 => {
+            let packed = reorder_oihw_to_tap_c(ram.as_slice::<f32>()?, co, ci);
+            Tensor::from_shape(&[co, 9, ci], &packed)?
+        }
+        DatumType::F16 => {
+            let packed = reorder_oihw_to_tap_c(ram.as_slice::<f16>()?, co, ci);
+            Tensor::from_shape(&[co, 9, ci], &packed)?
+        }
+        _ => return Ok(None),
+    };
+    let host = Const::new(host.into_arc_tensor())?;
+    Ok(Some(crate::transform::convert_const(&host)?))
+}
+
+fn reorder_oihw_to_tap_c<T: Copy>(taps: &[T], co: usize, ci: usize) -> Vec<T> {
+    let mut packed = Vec::with_capacity(co * 9 * ci);
+    for oc in 0..co {
+        for tap in 0..9 {
+            let r = tap / 3;
+            let c = tap % 3;
+            for ic in 0..ci {
+                packed.push(taps[((oc * ci + ic) * 3 + r) * 3 + c]);
+            }
+        }
+    }
+    packed
+}
+
 /// A convolution with any elementwise ops that followed it applied to each
 /// result before it is stored. Inputs past the data and the weights belong to
 /// the epilogue, one per binary step.
@@ -134,6 +200,8 @@ pub struct WgpuConv {
     pub f16_accumulation: bool,
     pub(crate) packed_weights: Option<Const>,
     pub(crate) packed_tile: Option<DirectTile>,
+    /// `[co, 9, ci]` weights for the channels-last vec4 pixel kernel.
+    pub(crate) pixel_packed: Option<Const>,
 }
 
 impl Op for WgpuConv {
@@ -147,6 +215,9 @@ impl Op for WgpuConv {
         }
         if self.packed_weights.is_some() {
             info.push("packed direct weights".to_string());
+        }
+        if self.pixel_packed.is_some() {
+            info.push("packed pixel weights".to_string());
         }
         Ok(info)
     }
@@ -168,6 +239,8 @@ impl EvalOp for WgpuConv {
         if output.len() > 0 {
             let packed =
                 self.packed_weights.as_ref().map(|p| p.val().to_device_tensor()).transpose()?;
+            let pixel_packed =
+                self.pixel_packed.as_ref().map(|p| p.val().to_device_tensor()).transpose()?;
             wgpu_conv_dispatch(
                 &self.op,
                 &self.epilogue,
@@ -178,6 +251,7 @@ impl EvalOp for WgpuConv {
                 self.f16_accumulation,
                 packed,
                 self.packed_tile,
+                pixel_packed,
             )?;
         }
         Ok(tvec!(output.into_tensor().into_tvalue()))
