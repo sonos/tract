@@ -1,6 +1,7 @@
 use tract_data::half::f16;
 
 mod by_scalar;
+mod depthwise;
 mod leaky_relu;
 mod max;
 pub mod panel_extract;
