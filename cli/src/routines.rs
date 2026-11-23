@@ -57,9 +57,10 @@ fn family(factory: &RoutineFactory) -> (u8, &'static str) {
         }
         RoutineFactory::LutU8 { .. } => (5, "look-up table"),
         RoutineFactory::BinF32 { .. } | RoutineFactory::BinF16 { .. } => (6, "binary"),
-        RoutineFactory::DepthwiseWF32 { .. } | RoutineFactory::DepthwiseCF32 { .. } => {
-            (7, "depthwise")
-        }
+        RoutineFactory::DepthwiseWF32 { .. }
+        | RoutineFactory::DepthwiseCF32 { .. }
+        | RoutineFactory::DepthwiseWF16 { .. }
+        | RoutineFactory::DepthwiseCF16 { .. } => (7, "depthwise"),
         RoutineFactory::ConvW4F32 { .. } => (8, "convolution"),
     }
 }

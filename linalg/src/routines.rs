@@ -312,6 +312,30 @@ pub type DepthwiseCF32 = unsafe fn(
     isize,
 );
 
+/// [`DepthwiseWF32`] on f16 data, accumulating in f16.
+///
+/// # Safety
+/// As [`DepthwiseWF32`].
+pub type DepthwiseWF16 = unsafe fn(*const f16, *mut f16, &[f16], &[isize], f16, usize, isize);
+
+/// [`DepthwiseCF32`] on f16 data, accumulating in f16.
+///
+/// # Safety
+/// As [`DepthwiseCF32`].
+pub type DepthwiseCF16 = unsafe fn(
+    *const f16,
+    *mut f16,
+    *const f16,
+    &[usize],
+    &[isize],
+    *const f16,
+    usize,
+    usize,
+    usize,
+    isize,
+    isize,
+);
+
 /// Softmax in place over each `row_len` row of a row-major buffer, `row_len` a non-zero
 /// multiple of 4: per row, the row max, `exp(x - max)` summed, then a multiply by `1 / sum`,
 /// with the same arithmetic and summation order as the per-row [`Func::ReduceMax`],
@@ -377,6 +401,14 @@ pub enum RoutineFactory {
         run: DepthwiseCF32,
     },
     /// A four-channel convolution inner-loop kernel, a plain function like the depthwise one.
+    DepthwiseWF16 {
+        name: &'static str,
+        run: DepthwiseWF16,
+    },
+    DepthwiseCF16 {
+        name: &'static str,
+        run: DepthwiseCF16,
+    },
     ConvW4F32 {
         name: &'static str,
         run: ConvW4F32,
@@ -422,9 +454,11 @@ impl Routine {
             | RoutineFactory::DepthwiseCF32 { .. }
             | RoutineFactory::ConvW4F32 { .. }
             | RoutineFactory::SoftmaxRowsF32 { .. } => DatumType::F32,
-            RoutineFactory::F16(_) | RoutineFactory::F16Param(_) | RoutineFactory::F16Reduce(_) => {
-                DatumType::F16
-            }
+            RoutineFactory::F16(_)
+            | RoutineFactory::F16Param(_)
+            | RoutineFactory::F16Reduce(_)
+            | RoutineFactory::DepthwiseWF16 { .. }
+            | RoutineFactory::DepthwiseCF16 { .. } => DatumType::F16,
             RoutineFactory::LutU8 { .. } => DatumType::U8,
             RoutineFactory::BinF32 { .. } => DatumType::F32,
             RoutineFactory::BinF16 { .. } => DatumType::F16,
@@ -446,6 +480,8 @@ impl Routine {
             RoutineFactory::RmsNormF32 { name, .. } => name,
             RoutineFactory::DepthwiseWF32 { name, .. } => name,
             RoutineFactory::DepthwiseCF32 { name, .. } => name,
+            RoutineFactory::DepthwiseWF16 { name, .. } => name,
+            RoutineFactory::DepthwiseCF16 { name, .. } => name,
             RoutineFactory::ConvW4F32 { name, .. } => name,
             RoutineFactory::SoftmaxRowsF32 { name, .. } => name,
             RoutineFactory::LutU8 { name, .. } => name(),
@@ -631,6 +667,72 @@ pub fn depthwise_c_f32() -> Option<DepthwiseCF32> {
     }
 }
 
+/// The f16 [`depthwise_w_f32`], `None` where none is written.
+pub fn depthwise_w_f16() -> Option<DepthwiseWF16> {
+    match native_best(Func::DepthwiseW, DatumType::F16)?.factory {
+        RoutineFactory::DepthwiseWF16 { run, .. } => Some(run),
+        _ => None,
+    }
+}
+
+/// The f16 [`depthwise_c_f32`], `None` where none is written.
+pub fn depthwise_c_f16() -> Option<DepthwiseCF16> {
+    match native_best(Func::DepthwiseC, DatumType::F16)?.factory {
+        RoutineFactory::DepthwiseCF16 { run, .. } => Some(run),
+        _ => None,
+    }
+}
+
+/// [`DepthwiseWF32`] over any element type: the depthwise kernel for `T`, `None` where none is
+/// written for it.
+pub type DepthwiseW<T> = unsafe fn(*const T, *mut T, &[T], &[isize], T, usize, isize);
+
+/// [`DepthwiseCF32`] over any element type.
+pub type DepthwiseC<T> = unsafe fn(
+    *const T,
+    *mut T,
+    *const T,
+    &[usize],
+    &[isize],
+    *const T,
+    usize,
+    usize,
+    usize,
+    isize,
+    isize,
+);
+
+/// The width-inner depthwise kernel this host runs for `T`, `None` where none is written.
+pub fn depthwise_w<T: Datum>() -> Option<DepthwiseW<T>> {
+    let dt = T::datum_type();
+    // SAFETY: the kernel for `dt` has the signature of `DepthwiseW<T>` with `T` its own element
+    // type, so the cast only renames a type the pointer already has.
+    unsafe {
+        if dt == DatumType::F32 {
+            depthwise_w_f32().map(|k| std::mem::transmute::<DepthwiseWF32, DepthwiseW<T>>(k))
+        } else if dt == DatumType::F16 {
+            depthwise_w_f16().map(|k| std::mem::transmute::<DepthwiseWF16, DepthwiseW<T>>(k))
+        } else {
+            None
+        }
+    }
+}
+
+/// The channel-inner depthwise kernel this host runs for `T`, `None` where none is written.
+pub fn depthwise_c<T: Datum>() -> Option<DepthwiseC<T>> {
+    let dt = T::datum_type();
+    // SAFETY: as in `depthwise_w`.
+    unsafe {
+        if dt == DatumType::F32 {
+            depthwise_c_f32().map(|k| std::mem::transmute::<DepthwiseCF32, DepthwiseC<T>>(k))
+        } else if dt == DatumType::F16 {
+            depthwise_c_f16().map(|k| std::mem::transmute::<DepthwiseCF16, DepthwiseC<T>>(k))
+        } else {
+            None
+        }
+    }
+}
+
 /// The four-channel convolution kernel this host runs, `None` where none is written. Optional
 /// like [`depthwise_w_f32`]: a machine without one lowers the convolution another way.
 pub fn conv_w4_f32() -> Option<ConvW4F32> {
@@ -692,6 +794,18 @@ macro_rules! submit_routine {
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
         submit_routine!(@@ $arch, $func,
             $crate::routines::RoutineFactory::DepthwiseCF32 { name: $name, run: $run }
+            $(, isa($($isa),+))? $(, boost($boost))?);
+    };
+    (@ $arch:expr; DepthwiseWF16, $func:ident, $name:literal, $run:path
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        submit_routine!(@@ $arch, $func,
+            $crate::routines::RoutineFactory::DepthwiseWF16 { name: $name, run: $run }
+            $(, isa($($isa),+))? $(, boost($boost))?);
+    };
+    (@ $arch:expr; DepthwiseCF16, $func:ident, $name:literal, $run:path
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        submit_routine!(@@ $arch, $func,
+            $crate::routines::RoutineFactory::DepthwiseCF16 { name: $name, run: $run }
             $(, isa($($isa),+))? $(, boost($boost))?);
     };
     (@ $arch:expr; ConvW4F32, $func:ident, $name:literal, $run:path
@@ -949,6 +1063,8 @@ mod tests {
                     RoutineFactory::RmsNormF32 { name, .. }
                     | RoutineFactory::DepthwiseWF32 { name, .. }
                     | RoutineFactory::DepthwiseCF32 { name, .. }
+                    | RoutineFactory::DepthwiseWF16 { name, .. }
+                    | RoutineFactory::DepthwiseCF16 { name, .. }
                     | RoutineFactory::ConvW4F32 { name, .. }
                     | RoutineFactory::SoftmaxRowsF32 { name, .. } => Ok(name),
                     RoutineFactory::LutU8 { name, .. } => lut_u8(&[0u8; 256]).map(|_| name()),
