@@ -1511,26 +1511,8 @@ pub fn try_dispatch(
         // The bound is baked into the shader. A loop on params.k stayed
         // serial in Dawn and lost to split-K there.
         let unroll = k >= 256;
-        let Some(source_main) = matrix_shader(
-            dt,
-            epilogue,
-            extras.len(),
-            plan.tile,
-            plan.size,
-            plan.pin,
-            plan.major,
-            block.tm,
-            block.tn,
-            block.sg_m,
-            block.sg_n,
-            block.sg_k,
-            unroll,
-            k as u32,
-        ) else {
-            return Ok(false);
-        };
-        let source_edge = if block.edge_rows > 0 {
-            let Some(source) = matrix_shader(
+        let source = |tm, tn, sg_m, sg_n, sg_k| {
+            matrix_shader(
                 dt,
                 epilogue,
                 extras.len(),
@@ -1538,19 +1520,15 @@ pub fn try_dispatch(
                 plan.size,
                 plan.pin,
                 plan.major,
-                block.edge_tm,
-                block.edge_tn,
-                block.edge_sg_m,
-                block.edge_sg_n,
-                1,
+                tm,
+                tn,
+                sg_m,
+                sg_n,
+                sg_k,
                 unroll,
                 k as u32,
-            ) else {
-                return Ok(false);
-            };
-            Some(source)
-        } else {
-            None
+            )
+            .expect("a planned block always renders")
         };
         let major = plan.major;
         let pipeline = match q.context().chain_pipeline(
@@ -1569,7 +1547,7 @@ pub fn try_dispatch(
             ),
             layout,
             EntryPoint::typed("matmul_sgemm", dt),
-            || source_main,
+            || source(block.tm, block.tn, block.sg_m, block.sg_n, block.sg_k),
         ) {
             Ok(pipeline) => pipeline,
             Err(e) => {
@@ -1579,7 +1557,7 @@ pub fn try_dispatch(
                 return Ok(false);
             }
         };
-        let edge_pipeline = if let Some(source_edge) = source_edge {
+        let edge_pipeline = if block.edge_rows > 0 {
             match q.context().chain_pipeline(
                 (
                     "matmul_sgemm",
@@ -1603,7 +1581,7 @@ pub fn try_dispatch(
                 ),
                 layout,
                 EntryPoint::typed("matmul_sgemm", dt),
-                || source_edge,
+                || source(block.edge_tm, block.edge_tn, block.edge_sg_m, block.edge_sg_n, 1),
             ) {
                 Ok(pipeline) => Some(pipeline),
                 Err(e) => {
