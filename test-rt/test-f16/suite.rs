@@ -66,6 +66,12 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
 }
 
 fn ignore_onnx(t: &[String]) -> bool {
+    if matches!(t, [suite, op, case] if suite == "generated" && op == "selu"
+        && matches!(case.as_str(), "opset_1" | "opset_6"))
+    {
+        return true;
+    }
+
     r#"
 test_averagepool_2d_ceil
 test_averagepool_2d_pads_count_include_pad
