@@ -320,11 +320,7 @@ macro_rules! impl_eval {
                 c0: usize,
                 c1: usize,
                 ) { unsafe {
-                let ker = if T::datum_type() == f32::datum_type() {
-                    tract_linalg::routines::depthwise_c_f32()
-                } else {
-                    None
-                };
+                let ker = tract_linalg::routines::depthwise_c::<T>();
                 let (iptr, kptr, bias, optr) =
                     (iptr.add(c0), kptr.add(c0), bias.add(c0), optr.add(c0));
                 let width = c1 - c0;
@@ -342,12 +338,12 @@ macro_rules! impl_eval {
                             let optr = optr.offset(visitor.output_offset);
                             if let Some(ker) = ker {
                                 ker(
-                                    iptr as *const f32,
-                                    optr as *mut f32,
-                                    kptr as *const f32,
+                                    iptr,
+                                    optr,
+                                    kptr,
                                     &tap_indices,
                                     &offsets,
-                                    bias as *const f32,
+                                    bias,
                                     width,
                                     k_stride_i as usize,
                                     visitor.inner_loop_len,
@@ -428,9 +424,7 @@ macro_rules! impl_eval {
                     ),
                     // Without a vectorised kernel the zone keeps the plain inline walk:
                     // routed through `process_zone_any` it runs measurably slower on wasm.
-                    _ if T::datum_type() == f32::datum_type()
-                        && tract_linalg::routines::depthwise_w_f32().is_some()
-                        && c_stride_o != 1 =>
+                    _ if tract_linalg::routines::depthwise_w::<T>().is_some() && c_stride_o != 1 =>
                     {
                         [<process_zone_any_ $suffix>](
                             visitor, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
@@ -513,11 +507,7 @@ macro_rules! impl_eval {
                     ioffset[i] = zone.values_offsets[i].1;
                 }
                 let mut k = [T::zero(); N];
-                let ker = if T::datum_type() == f32::datum_type() {
-                    tract_linalg::routines::depthwise_w_f32()
-                } else {
-                    None
-                };
+                let ker = tract_linalg::routines::depthwise_w::<T>();
                 for c in c_start..c_end {
                     visitor.reset();
                     let iptr = iptr.offset(c_stride_i * c);
@@ -533,13 +523,12 @@ macro_rules! impl_eval {
                             && visitor.inner_loop_output_stride == 1
                             && visitor.inner_loop_input_full_stride >= 1
                         {
-                            let k_f32 = *(&k as *const [T; N] as *const [f32; N]);
                             ker(
-                                iptr as *const f32,
-                                optr as *mut f32,
-                                &k_f32,
+                                iptr,
+                                optr,
+                                &k,
                                 &ioffset,
-                                *(&bias as *const T as *const f32),
+                                bias,
                                 visitor.inner_loop_len,
                                 visitor.inner_loop_input_full_stride,
                             );
@@ -623,11 +612,7 @@ macro_rules! impl_eval {
                 // 3x3 and 5x5 convolution, at nine and twenty-five taps -- still walks the same
                 // inner loop, so hand it the whole tap list. The kernel takes the count at
                 // runtime; it was the compile-time count that kept this on the scalar path.
-                let ker = if T::datum_type() == f32::datum_type() {
-                    tract_linalg::routines::depthwise_w_f32()
-                } else {
-                    None
-                };
+                let ker = tract_linalg::routines::depthwise_w::<T>();
                 let zone = scanner.zone;
                 let taps = zone.values_offsets.len();
                 let Some(ker) = ker.filter(|_| taps <= MAX_VECTORISED_TAPS) else {
@@ -660,11 +645,7 @@ macro_rules! impl_eval {
                     for (ix, (ker_ix, _)) in zone.values_offsets.iter().enumerate() {
                         k[ix] = *kptr.add(*ker_ix);
                     }
-                    // `T` is f32 on the only path that gets here, checked above: the kernel reads
-                    // the taps and the bias as f32, so re-read the buffers rather than convert.
-                    let k_f32 = std::slice::from_raw_parts(k.as_ptr() as *const f32, taps);
                     let bias_t = *bias.offset(c);
-                    let bias_f32 = *(bias as *const T as *const f32).offset(c);
                     visitor.reset();
                     while !visitor.done {
                         let iptr = iptr.offset(visitor.input_center_offset);
@@ -673,11 +654,11 @@ macro_rules! impl_eval {
                             && visitor.inner_loop_input_full_stride >= 1
                         {
                             ker(
-                                iptr as *const f32,
-                                optr as *mut f32,
-                                k_f32,
+                                iptr,
+                                optr,
+                                &k[..taps],
                                 ioffset,
-                                bias_f32,
+                                bias_t,
                                 visitor.inner_loop_len,
                                 visitor.inner_loop_input_full_stride,
                             );
@@ -1195,6 +1176,20 @@ mod tests {
         run_dw_dt(f16, DataFormat::NHWC, 3, 9, 9, 3, 3, PaddingSpec::Valid, (1, 1));
         run_dw_dt(f16, DataFormat::NHWC, 33, 12, 14, 3, 3, PaddingSpec::SameUpper, (1, 1));
         run_dw_dt(f16, DataFormat::NHWC, 64, 11, 13, 5, 5, PaddingSpec::SameUpper, (2, 2));
+    }
+
+    #[test]
+    fn depthwise_nchw_f16_matches_reference() {
+        let f16 = f16::datum_type();
+        run_dw_dt(f16, DataFormat::NCHW, 8, 20, 20, 3, 3, PaddingSpec::SameUpper, (1, 1));
+        run_dw_dt(f16, DataFormat::NCHW, 5, 41, 37, 3, 3, PaddingSpec::Valid, (1, 1));
+        run_dw_dt(f16, DataFormat::NCHW, 4, 33, 35, 5, 5, PaddingSpec::SameUpper, (1, 1));
+        run_dw_dt(f16, DataFormat::NCHW, 6, 29, 29, 3, 3, PaddingSpec::SameUpper, (2, 2));
+        run_dw_dt(f16, DataFormat::NCHW, 3, 1, 481, 1, 3, PaddingSpec::Valid, (1, 1));
+        let pool = tract_linalg::multithread::Executor::multithread(4);
+        tract_linalg::multithread::multithread_tract_scope(pool, || {
+            run_dw_dt(f16, DataFormat::NCHW, 128, 20, 20, 3, 3, PaddingSpec::SameUpper, (1, 1));
+        });
     }
 
     #[test]
