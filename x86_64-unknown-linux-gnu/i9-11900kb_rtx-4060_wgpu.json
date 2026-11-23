@@ -32,6 +32,7 @@ null,
 "2bfb417deac77736138a8c2e2302968974b37959",
 "3303188d89f9bec40f190b9426f0d0eaaf13ceda",
 "4f8b5c7a304e697faa3f941e2360a9af05aa35cf",
+"78c7fdd24809b42e8297192742576185902e03d3",
 "78c7fdd24809b42e8297192742576185902e03d3"
 ],
 "metrics": {
@@ -67,7 +68,8 @@ null,
 2109,
 2149,
 1836,
-1853
+1853,
+1859
 ],
 "net.arm_ml_kws_cnn_m.active_at_before_optimize.pass_wgpu": [
 827000,
@@ -98,6 +100,7 @@ null,
 827600,
 827600,
 827600,
+827700,
 827700,
 827700,
 827700,
@@ -135,6 +138,7 @@ null,
 2851000,
 2851000,
 2851000,
+2851000,
 2851000
 ],
 "net.arm_ml_kws_cnn_m.evaltime.pass_wgpu": [
@@ -169,7 +173,8 @@ null,
 0.0005969,
 0.0005872,
 0.000172,
-0.0001701
+0.0001701,
+0.0001717
 ],
 "net.arm_ml_kws_cnn_m.rsz_at_before_optimize.pass_wgpu": [
 29160000,
@@ -203,7 +208,8 @@ null,
 26980000,
 26870000,
 28880000,
-28750000
+28750000,
+28790000
 ],
 "net.arm_ml_kws_cnn_m.rsz_at_model_ready.pass_wgpu": [
 183200000,
@@ -237,7 +243,8 @@ null,
 203500000,
 194400000,
 203600000,
-203800000
+203800000,
+203900000
 ],
 "net.arm_ml_kws_cnn_m.time_to_before_optimize.pass_wgpu": [
 0.004,
@@ -253,6 +260,7 @@ null,
 0.004,
 0.005,
 0.006,
+0.004,
 0.004,
 0.004,
 0.004,
@@ -305,7 +313,8 @@ null,
 0.149,
 0.146,
 0.143,
-0.145
+0.145,
+0.147
 ],
 "net.birefnet_general_lite_1024px.active_at_before_optimize.wgpu": [
 null,
@@ -317,6 +326,7 @@ null,
 null,
 238800000,
 238800000,
+235900000,
 235900000,
 235900000,
 235900000,
@@ -373,6 +383,7 @@ null,
 20150000,
 20160000,
 20150000,
+20150000,
 20150000
 ],
 "net.birefnet_general_lite_1024px.evaltime.wgpu": [
@@ -407,7 +418,8 @@ null,
 0.5058,
 0.5037,
 0.5042,
-0.5045
+0.5045,
+0.5044
 ],
 "net.birefnet_general_lite_1024px.rsz_at_before_optimize.wgpu": [
 null,
@@ -441,7 +453,8 @@ null,
 287300000,
 288600000,
 289200000,
-287500000
+287500000,
+287200000
 ],
 "net.birefnet_general_lite_1024px.rsz_at_model_ready.wgpu": [
 null,
@@ -475,7 +488,8 @@ null,
 240600000,
 232900000,
 241900000,
-241400000
+241400000,
+240300000
 ],
 "net.birefnet_general_lite_1024px.time_to_before_optimize.wgpu": [
 null,
@@ -509,7 +523,8 @@ null,
 6.136,
 6.052,
 5.995,
-6.045
+6.045,
+6.042
 ],
 "net.birefnet_general_lite_1024px.time_to_model_ready.wgpu": [
 null,
@@ -543,7 +558,8 @@ null,
 7.207,
 7.137,
 7.056,
-7.102
+7.102,
+7.115
 ],
 "net.dfn3_df_dec.active_at_before_optimize.s100_wgpu": [
 3501000,
@@ -557,6 +573,7 @@ null,
 3501000,
 3501000,
 3501000,
+3502000,
 3502000,
 3502000,
 3502000,
@@ -611,6 +628,7 @@ null,
 6151000,
 6151000,
 6152000,
+6152000,
 6152000
 ],
 "net.dfn3_df_dec.evaltime.s100_wgpu": [
@@ -645,7 +663,8 @@ null,
 0.002431,
 0.002643,
 0.004883,
-0.002475
+0.002475,
+0.002508
 ],
 "net.dfn3_df_dec.rsz_at_before_optimize.s100_wgpu": [
 32890000,
@@ -679,7 +698,8 @@ null,
 31760000,
 31250000,
 33720000,
-33540000
+33540000,
+34030000
 ],
 "net.dfn3_df_dec.rsz_at_model_ready.s100_wgpu": [
 256300000,
@@ -713,7 +733,8 @@ null,
 209700000,
 200900000,
 211300000,
-211200000
+211200000,
+209900000
 ],
 "net.dfn3_df_dec.time_to_before_optimize.s100_wgpu": [
 0.009,
@@ -747,6 +768,7 @@ null,
 0.009,
 0.009,
 0.01,
+0.009,
 0.009
 ],
 "net.dfn3_df_dec.time_to_model_ready.s100_wgpu": [
@@ -781,6 +803,7 @@ null,
 0.167,
 0.168,
 0.17,
+0.166,
 0.166
 ],
 "net.dfn3_enc.active_at_before_optimize.s100_wgpu": [
@@ -789,6 +812,7 @@ null,
 2181000,
 null,
 null,
+2181000,
 2181000,
 2181000,
 2181000,
@@ -849,6 +873,7 @@ null,
 4717000,
 4717000,
 4718000,
+4718000,
 4718000
 ],
 "net.dfn3_enc.evaltime.s100_wgpu": [
@@ -883,7 +908,8 @@ null,
 0.001612,
 0.001649,
 0.002185,
-0.001606
+0.001606,
+0.001692
 ],
 "net.dfn3_enc.rsz_at_before_optimize.s100_wgpu": [
 31910000,
@@ -917,7 +943,8 @@ null,
 30820000,
 30240000,
 32440000,
-32460000
+32460000,
+32340000
 ],
 "net.dfn3_enc.rsz_at_model_ready.s100_wgpu": [
 255400000,
@@ -951,7 +978,8 @@ null,
 208400000,
 198500000,
 210400000,
-208300000
+208300000,
+209100000
 ],
 "net.dfn3_enc.time_to_before_optimize.s100_wgpu": [
 0.011,
@@ -967,6 +995,7 @@ null,
 0.012,
 0.012,
 0.013,
+0.011,
 0.011,
 0.011,
 0.011,
@@ -1019,7 +1048,8 @@ null,
 0.156,
 0.154,
 0.159,
-0.153
+0.153,
+0.156
 ],
 "net.dfn3_erb_dec.active_at_before_optimize.s100_wgpu": [
 3518000,
@@ -1027,6 +1057,7 @@ null,
 3518000,
 null,
 null,
+3518000,
 3518000,
 3518000,
 3518000,
@@ -1087,6 +1118,7 @@ null,
 6276000,
 6276000,
 6276000,
+6276000,
 6276000
 ],
 "net.dfn3_erb_dec.evaltime.s100_wgpu": [
@@ -1121,7 +1153,8 @@ null,
 0.002349,
 0.002426,
 0.003692,
-0.002445
+0.002445,
+0.002375
 ],
 "net.dfn3_erb_dec.rsz_at_before_optimize.s100_wgpu": [
 32320000,
@@ -1155,7 +1188,8 @@ null,
 31150000,
 30860000,
 33050000,
-33080000
+33080000,
+32890000
 ],
 "net.dfn3_erb_dec.rsz_at_model_ready.s100_wgpu": [
 256000000,
@@ -1189,7 +1223,8 @@ null,
 209900000,
 200500000,
 209700000,
-209200000
+209200000,
+209600000
 ],
 "net.dfn3_erb_dec.time_to_before_optimize.s100_wgpu": [
 0.01,
@@ -1205,6 +1240,7 @@ null,
 0.011,
 0.01,
 0.011,
+0.01,
 0.01,
 0.01,
 0.01,
@@ -1257,6 +1293,7 @@ null,
 0.167,
 0.168,
 0.165,
+0.166,
 0.166
 ],
 "net.dtln_1.active_at_before_optimize.frame_wgpu": [
@@ -1265,6 +1302,7 @@ null,
 1594000,
 null,
 null,
+1595000,
 1595000,
 1595000,
 1595000,
@@ -1325,6 +1363,7 @@ null,
 2882000,
 2882000,
 2882000,
+2882000,
 2882000
 ],
 "net.dtln_1.evaltime.frame_wgpu": [
@@ -1359,7 +1398,8 @@ null,
 0.0006793,
 0.0006178,
 0.0006221,
-0.0006166
+0.0006166,
+0.000614
 ],
 "net.dtln_1.rsz_at_before_optimize.frame_wgpu": [
 29430000,
@@ -1393,7 +1433,8 @@ null,
 27560000,
 27320000,
 29700000,
-29180000
+29180000,
+29330000
 ],
 "net.dtln_1.rsz_at_model_ready.frame_wgpu": [
 183000000,
@@ -1427,7 +1468,8 @@ null,
 204000000,
 195200000,
 203900000,
-203700000
+203700000,
+203900000
 ],
 "net.dtln_1.time_to_before_optimize.frame_wgpu": [
 0.007,
@@ -1461,7 +1503,8 @@ null,
 0.008,
 0.007,
 0.008,
-0.008
+0.008,
+0.007
 ],
 "net.dtln_1.time_to_model_ready.frame_wgpu": [
 0.159,
@@ -1495,7 +1538,8 @@ null,
 0.154,
 0.158,
 0.156,
-0.158
+0.158,
+0.157
 ],
 "net.dtln_2.active_at_before_optimize.frame_wgpu": [
 2804000,
@@ -1510,6 +1554,7 @@ null,
 2801000,
 2801000,
 2801000,
+2803000,
 2803000,
 2803000,
 2803000,
@@ -1563,6 +1608,7 @@ null,
 3129000,
 3129000,
 3129000,
+3129000,
 3129000
 ],
 "net.dtln_2.evaltime.frame_wgpu": [
@@ -1597,7 +1643,8 @@ null,
 0.0006284,
 0.0005793,
 0.0004319,
-0.00043
+0.00043,
+0.0004285
 ],
 "net.dtln_2.rsz_at_before_optimize.frame_wgpu": [
 31060000,
@@ -1631,7 +1678,8 @@ null,
 29550000,
 29680000,
 31620000,
-31720000
+31720000,
+31530000
 ],
 "net.dtln_2.rsz_at_model_ready.frame_wgpu": [
 183800000,
@@ -1665,7 +1713,8 @@ null,
 205000000,
 196500000,
 206600000,
-205000000
+205000000,
+204600000
 ],
 "net.dtln_2.time_to_before_optimize.frame_wgpu": [
 0.013,
@@ -1690,6 +1739,7 @@ null,
 0.013,
 0.013,
 0.012,
+0.013,
 0.013,
 0.013,
 0.013,
@@ -1733,7 +1783,8 @@ null,
 0.157,
 0.156,
 0.158,
-0.158
+0.158,
+0.162
 ],
 "net.dummy_conmer_12M.active_at_before_optimize.pulse_120ms_wgpu": [
 51440000,
@@ -1748,6 +1799,7 @@ null,
 51220000,
 51220000,
 51220000,
+51230000,
 51230000,
 51230000,
 51230000,
@@ -1801,6 +1853,7 @@ null,
 5297000,
 5298000,
 5298000,
+5298000,
 5298000
 ],
 "net.dummy_conmer_12M.evaltime.pulse_120ms_wgpu": [
@@ -1835,7 +1888,8 @@ null,
 0.005984,
 0.002557,
 0.001895,
-0.001909
+0.001909,
+0.001914
 ],
 "net.dummy_conmer_12M.rsz_at_before_optimize.pulse_120ms_wgpu": [
 83440000,
@@ -1869,7 +1923,8 @@ null,
 83640000,
 82350000,
 84660000,
-84350000
+84350000,
+84080000
 ],
 "net.dummy_conmer_12M.rsz_at_model_ready.pulse_120ms_wgpu": [
 255000000,
@@ -1903,7 +1958,8 @@ null,
 209100000,
 200600000,
 210500000,
-211200000
+211200000,
+211100000
 ],
 "net.dummy_conmer_12M.time_to_before_optimize.pulse_120ms_wgpu": [
 0.265,
@@ -1937,7 +1993,8 @@ null,
 0.264,
 0.256,
 0.254,
-0.26
+0.26,
+0.255
 ],
 "net.dummy_conmer_12M.time_to_model_ready.pulse_120ms_wgpu": [
 0.475,
@@ -1971,7 +2028,8 @@ null,
 0.447,
 0.443,
 0.44,
-0.447
+0.447,
+0.438
 ],
 "net.en_tdnn_15M.active_at_before_optimize.2600ms_wgpu": [
 71110000,
@@ -1979,6 +2037,7 @@ null,
 71110000,
 null,
 null,
+71110000,
 71110000,
 71110000,
 71110000,
@@ -2039,6 +2098,7 @@ null,
 71120000,
 71120000,
 71120000,
+71120000,
 71120000
 ],
 "net.en_tdnn_15M.active_at_before_optimize.pulse_240ms_wgpu": [
@@ -2047,6 +2107,7 @@ null,
 71120000,
 null,
 null,
+71120000,
 71120000,
 71120000,
 71120000,
@@ -2107,6 +2168,7 @@ null,
 15300000,
 15300000,
 15300000,
+15300000,
 15300000
 ],
 "net.en_tdnn_15M.active_at_model_ready.pulse_120ms_wgpu": [
@@ -2138,6 +2200,7 @@ null,
 15320000,
 15310000,
 15310000,
+15320000,
 15320000,
 15320000,
 15320000,
@@ -2175,6 +2238,7 @@ null,
 15320000,
 15320000,
 15320000,
+15320000,
 15320000
 ],
 "net.en_tdnn_15M.evaltime.2600ms_wgpu": [
@@ -2209,7 +2273,8 @@ null,
 0.02756,
 0.02674,
 0.02658,
-0.02694
+0.02694,
+0.02661
 ],
 "net.en_tdnn_15M.evaltime.pulse_120ms_wgpu": [
 0.00656,
@@ -2243,7 +2308,8 @@ null,
 0.005886,
 0.00584,
 0.005794,
-0.005847
+0.005847,
+0.00586
 ],
 "net.en_tdnn_15M.evaltime.pulse_240ms_wgpu": [
 0.008494,
@@ -2277,7 +2343,8 @@ null,
 0.007084,
 0.00698,
 0.006945,
-0.007059
+0.007059,
+0.007003
 ],
 "net.en_tdnn_15M.rsz_at_before_optimize.2600ms_wgpu": [
 103800000,
@@ -2311,7 +2378,8 @@ null,
 104300000,
 104600000,
 106100000,
-106100000
+106100000,
+104300000
 ],
 "net.en_tdnn_15M.rsz_at_before_optimize.pulse_120ms_wgpu": [
 104900000,
@@ -2345,7 +2413,8 @@ null,
 106300000,
 106600000,
 105900000,
-105900000
+105900000,
+106300000
 ],
 "net.en_tdnn_15M.rsz_at_before_optimize.pulse_240ms_wgpu": [
 104900000,
@@ -2379,7 +2448,8 @@ null,
 106700000,
 106500000,
 106200000,
-106000000
+106000000,
+105700000
 ],
 "net.en_tdnn_15M.rsz_at_model_ready.2600ms_wgpu": [
 299100000,
@@ -2413,7 +2483,8 @@ null,
 221900000,
 213500000,
 224000000,
-223500000
+223500000,
+224100000
 ],
 "net.en_tdnn_15M.rsz_at_model_ready.pulse_120ms_wgpu": [
 299700000,
@@ -2447,7 +2518,8 @@ null,
 223400000,
 215400000,
 225200000,
-224700000
+224700000,
+225100000
 ],
 "net.en_tdnn_15M.rsz_at_model_ready.pulse_240ms_wgpu": [
 299500000,
@@ -2481,7 +2553,8 @@ null,
 223100000,
 214800000,
 225100000,
-224600000
+224600000,
+225500000
 ],
 "net.en_tdnn_15M.time_to_before_optimize.2600ms_wgpu": [
 0.125,
@@ -2515,7 +2588,8 @@ null,
 0.13,
 0.127,
 0.125,
-0.127
+0.127,
+0.125
 ],
 "net.en_tdnn_15M.time_to_before_optimize.pulse_120ms_wgpu": [
 0.14,
@@ -2549,7 +2623,8 @@ null,
 0.144,
 0.141,
 0.141,
-0.142
+0.142,
+0.138
 ],
 "net.en_tdnn_15M.time_to_before_optimize.pulse_240ms_wgpu": [
 0.141,
@@ -2583,7 +2658,8 @@ null,
 0.145,
 0.141,
 0.141,
-0.141
+0.141,
+0.14
 ],
 "net.en_tdnn_15M.time_to_model_ready.2600ms_wgpu": [
 0.352,
@@ -2617,7 +2693,8 @@ null,
 0.31,
 0.304,
 0.3,
-0.304
+0.304,
+0.301
 ],
 "net.en_tdnn_15M.time_to_model_ready.pulse_120ms_wgpu": [
 0.354,
@@ -2651,7 +2728,8 @@ null,
 0.309,
 0.305,
 0.309,
-0.305
+0.305,
+0.301
 ],
 "net.en_tdnn_15M.time_to_model_ready.pulse_240ms_wgpu": [
 0.36,
@@ -2685,7 +2763,8 @@ null,
 0.309,
 0.311,
 0.305,
-0.322
+0.322,
+0.303
 ],
 "net.en_tdnn_15M_nnef.active_at_before_optimize.pulse_240ms_wgpu": [
 71090000,
@@ -2693,6 +2772,7 @@ null,
 71090000,
 null,
 null,
+71090000,
 71090000,
 71090000,
 71090000,
@@ -2753,6 +2833,7 @@ null,
 15210000,
 15210000,
 15210000,
+15210000,
 15210000
 ],
 "net.en_tdnn_15M_nnef.evaltime.pulse_240ms_wgpu": [
@@ -2787,7 +2868,8 @@ null,
 0.006921,
 0.006687,
 0.00657,
-0.006661
+0.006661,
+0.006737
 ],
 "net.en_tdnn_15M_nnef.rsz_at_before_optimize.pulse_240ms_wgpu": [
 98240000,
@@ -2821,7 +2903,8 @@ null,
 96210000,
 96430000,
 98830000,
-98810000
+98810000,
+98980000
 ],
 "net.en_tdnn_15M_nnef.rsz_at_model_ready.pulse_240ms_wgpu": [
 295100000,
@@ -2855,7 +2938,8 @@ null,
 217400000,
 209100000,
 220100000,
-219200000
+219200000,
+219900000
 ],
 "net.en_tdnn_15M_nnef.time_to_before_optimize.pulse_240ms_wgpu": [
 0.041,
@@ -2889,7 +2973,8 @@ null,
 0.043,
 0.04,
 0.041,
-0.04
+0.04,
+0.039
 ],
 "net.en_tdnn_15M_nnef.time_to_model_ready.pulse_240ms_wgpu": [
 0.252,
@@ -2923,7 +3008,8 @@ null,
 0.209,
 0.198,
 0.199,
-0.2
+0.2,
+0.197
 ],
 "net.en_tdnn_8M.active_at_before_optimize.2600ms_wgpu": [
 32850000,
@@ -2931,6 +3017,7 @@ null,
 32850000,
 null,
 null,
+32850000,
 32850000,
 32850000,
 32850000,
@@ -2991,6 +3078,7 @@ null,
 32860000,
 32860000,
 32860000,
+32860000,
 32860000
 ],
 "net.en_tdnn_8M.active_at_before_optimize.pulse_180ms_wgpu": [
@@ -2999,6 +3087,7 @@ null,
 32860000,
 null,
 null,
+32860000,
 32860000,
 32860000,
 32860000,
@@ -3059,6 +3148,7 @@ null,
 32860000,
 32860000,
 32860000,
+32860000,
 32860000
 ],
 "net.en_tdnn_8M.active_at_model_ready.2600ms_wgpu": [
@@ -3092,6 +3182,7 @@ null,
 8684000,
 8689000,
 8689000,
+8690000,
 8690000,
 8690000
 ],
@@ -3127,6 +3218,7 @@ null,
 8711000,
 8711000,
 8712000,
+8712000,
 8712000
 ],
 "net.en_tdnn_8M.active_at_model_ready.pulse_180ms_wgpu": [
@@ -3160,6 +3252,7 @@ null,
 8706000,
 8711000,
 8711000,
+8712000,
 8712000,
 8712000
 ],
@@ -3195,6 +3288,7 @@ null,
 8711000,
 8711000,
 8712000,
+8712000,
 8712000
 ],
 "net.en_tdnn_8M.evaltime.2600ms_wgpu": [
@@ -3229,7 +3323,8 @@ null,
 0.01331,
 0.01325,
 0.01343,
-0.01345
+0.01345,
+0.01358
 ],
 "net.en_tdnn_8M.evaltime.pulse_120ms_wgpu": [
 0.003563,
@@ -3263,7 +3358,8 @@ null,
 0.003907,
 0.003921,
 0.003906,
-0.003917
+0.003917,
+0.003904
 ],
 "net.en_tdnn_8M.evaltime.pulse_180ms_wgpu": [
 0.004001,
@@ -3297,7 +3393,8 @@ null,
 0.004189,
 0.004159,
 0.004168,
-0.004167
+0.004167,
+0.004157
 ],
 "net.en_tdnn_8M.evaltime.pulse_240ms_wgpu": [
 0.004463,
@@ -3331,7 +3428,8 @@ null,
 0.004493,
 0.004477,
 0.004458,
-0.004461
+0.004461,
+0.004475
 ],
 "net.en_tdnn_8M.rsz_at_before_optimize.2600ms_wgpu": [
 63670000,
@@ -3365,7 +3463,8 @@ null,
 63170000,
 62770000,
 66500000,
-64340000
+64340000,
+64390000
 ],
 "net.en_tdnn_8M.rsz_at_before_optimize.pulse_120ms_wgpu": [
 64510000,
@@ -3399,7 +3498,8 @@ null,
 64470000,
 64400000,
 66480000,
-66170000
+66170000,
+66660000
 ],
 "net.en_tdnn_8M.rsz_at_before_optimize.pulse_180ms_wgpu": [
 64910000,
@@ -3433,7 +3533,8 @@ null,
 64590000,
 64110000,
 66430000,
-66170000
+66170000,
+66110000
 ],
 "net.en_tdnn_8M.rsz_at_before_optimize.pulse_240ms_wgpu": [
 65230000,
@@ -3467,7 +3568,8 @@ null,
 64320000,
 64180000,
 66200000,
-65860000
+65860000,
+66180000
 ],
 "net.en_tdnn_8M.rsz_at_model_ready.2600ms_wgpu": [
 277600000,
@@ -3501,7 +3603,8 @@ null,
 215800000,
 206900000,
 216800000,
-214800000
+214800000,
+215600000
 ],
 "net.en_tdnn_8M.rsz_at_model_ready.pulse_120ms_wgpu": [
 276400000,
@@ -3535,7 +3638,8 @@ null,
 216600000,
 208400000,
 218600000,
-217000000
+217000000,
+217400000
 ],
 "net.en_tdnn_8M.rsz_at_model_ready.pulse_180ms_wgpu": [
 276600000,
@@ -3569,7 +3673,8 @@ null,
 216600000,
 208100000,
 216700000,
-216300000
+216300000,
+216900000
 ],
 "net.en_tdnn_8M.rsz_at_model_ready.pulse_240ms_wgpu": [
 278200000,
@@ -3603,7 +3708,8 @@ null,
 216500000,
 208300000,
 216700000,
-216700000
+216700000,
+218500000
 ],
 "net.en_tdnn_8M.time_to_before_optimize.2600ms_wgpu": [
 0.079,
@@ -3637,7 +3743,8 @@ null,
 0.079,
 0.077,
 0.076,
-0.077
+0.077,
+0.076
 ],
 "net.en_tdnn_8M.time_to_before_optimize.pulse_120ms_wgpu": [
 0.094,
@@ -3671,6 +3778,7 @@ null,
 0.094,
 0.093,
 0.092,
+0.093,
 0.093
 ],
 "net.en_tdnn_8M.time_to_before_optimize.pulse_180ms_wgpu": [
@@ -3705,7 +3813,8 @@ null,
 0.094,
 0.092,
 0.091,
-0.093
+0.093,
+0.092
 ],
 "net.en_tdnn_8M.time_to_before_optimize.pulse_240ms_wgpu": [
 0.093,
@@ -3739,7 +3848,8 @@ null,
 0.093,
 0.091,
 0.091,
-0.092
+0.092,
+0.091
 ],
 "net.en_tdnn_8M.time_to_model_ready.2600ms_wgpu": [
 0.272,
@@ -3773,7 +3883,8 @@ null,
 0.249,
 0.247,
 0.24,
-0.247
+0.247,
+0.243
 ],
 "net.en_tdnn_8M.time_to_model_ready.pulse_120ms_wgpu": [
 0.284,
@@ -3807,7 +3918,8 @@ null,
 0.25,
 0.246,
 0.246,
-0.249
+0.249,
+0.248
 ],
 "net.en_tdnn_8M.time_to_model_ready.pulse_180ms_wgpu": [
 0.285,
@@ -3841,7 +3953,8 @@ null,
 0.252,
 0.247,
 0.246,
-0.247
+0.247,
+0.246
 ],
 "net.en_tdnn_8M.time_to_model_ready.pulse_240ms_wgpu": [
 0.288,
@@ -3875,7 +3988,8 @@ null,
 0.252,
 0.244,
 0.246,
-0.249
+0.249,
+0.243
 ],
 "net.en_tdnn_8M_nnef.active_at_before_optimize.pulse_240ms_wgpu": [
 32830000,
@@ -3883,6 +3997,7 @@ null,
 32830000,
 null,
 null,
+32830000,
 32830000,
 32830000,
 32830000,
@@ -3943,6 +4058,7 @@ null,
 8598000,
 8598000,
 8599000,
+8599000,
 8599000
 ],
 "net.en_tdnn_8M_nnef.evaltime.pulse_240ms_wgpu": [
@@ -3977,7 +4093,8 @@ null,
 0.004216,
 0.004156,
 0.004097,
-0.004121
+0.004121,
+0.004105
 ],
 "net.en_tdnn_8M_nnef.rsz_at_before_optimize.pulse_240ms_wgpu": [
 59480000,
@@ -4011,7 +4128,8 @@ null,
 57940000,
 57720000,
 60270000,
-60140000
+60140000,
+60200000
 ],
 "net.en_tdnn_8M_nnef.rsz_at_model_ready.pulse_240ms_wgpu": [
 274600000,
@@ -4045,6 +4163,7 @@ null,
 211300000,
 202500000,
 213200000,
+213500000,
 213500000
 ],
 "net.en_tdnn_8M_nnef.time_to_before_optimize.pulse_240ms_wgpu": [
@@ -4079,6 +4198,7 @@ null,
 0.032,
 0.03,
 0.031,
+0.03,
 0.03
 ],
 "net.en_tdnn_8M_nnef.time_to_model_ready.pulse_240ms_wgpu": [
@@ -4113,7 +4233,8 @@ null,
 0.183,
 0.182,
 0.185,
-0.182
+0.182,
+0.179
 ],
 "net.en_tdnn_lstm_bn_q7.active_at_before_optimize.2600ms_wgpu": [
 2988000,
@@ -4121,6 +4242,7 @@ null,
 2988000,
 null,
 null,
+2988000,
 2988000,
 2988000,
 2988000,
@@ -4181,6 +4303,7 @@ null,
 2998000,
 2998000,
 2998000,
+2998000,
 2998000
 ],
 "net.en_tdnn_lstm_bn_q7.active_at_model_ready.2600ms_wgpu": [
@@ -4212,6 +4335,7 @@ null,
 5643000,
 5643000,
 5643000,
+5645000,
 5645000,
 5645000,
 5645000,
@@ -4249,6 +4373,7 @@ null,
 5657000,
 5657000,
 5657000,
+5658000,
 5658000
 ],
 "net.en_tdnn_lstm_bn_q7.evaltime.2600ms_wgpu": [
@@ -4283,7 +4408,8 @@ null,
 0.0134,
 0.01305,
 0.01301,
-0.01333
+0.01333,
+0.01325
 ],
 "net.en_tdnn_lstm_bn_q7.evaltime.pulse_240ms_wgpu": [
 0.00199,
@@ -4317,7 +4443,8 @@ null,
 0.001851,
 0.001835,
 0.001828,
-0.001837
+0.001837,
+0.001836
 ],
 "net.en_tdnn_lstm_bn_q7.rsz_at_before_optimize.2600ms_wgpu": [
 32100000,
@@ -4351,7 +4478,8 @@ null,
 30930000,
 30770000,
 32690000,
-32760000
+32760000,
+32720000
 ],
 "net.en_tdnn_lstm_bn_q7.rsz_at_before_optimize.pulse_240ms_wgpu": [
 33480000,
@@ -4385,7 +4513,8 @@ null,
 32820000,
 32340000,
 34630000,
-34480000
+34480000,
+34760000
 ],
 "net.en_tdnn_lstm_bn_q7.rsz_at_model_ready.2600ms_wgpu": [
 258600000,
@@ -4419,7 +4548,8 @@ null,
 210300000,
 201400000,
 211700000,
-209900000
+209900000,
+210200000
 ],
 "net.en_tdnn_lstm_bn_q7.rsz_at_model_ready.pulse_240ms_wgpu": [
 257600000,
@@ -4453,7 +4583,8 @@ null,
 211400000,
 203000000,
 211800000,
-211400000
+211400000,
+211500000
 ],
 "net.en_tdnn_lstm_bn_q7.time_to_before_optimize.2600ms_wgpu": [
 0.049,
@@ -4487,7 +4618,8 @@ null,
 0.049,
 0.048,
 0.048,
-0.049
+0.049,
+0.048
 ],
 "net.en_tdnn_lstm_bn_q7.time_to_before_optimize.pulse_240ms_wgpu": [
 0.062,
@@ -4521,7 +4653,8 @@ null,
 0.061,
 0.062,
 0.061,
-0.062
+0.062,
+0.061
 ],
 "net.en_tdnn_lstm_bn_q7.time_to_model_ready.2600ms_wgpu": [
 0.246,
@@ -4555,7 +4688,8 @@ null,
 0.238,
 0.238,
 0.232,
-0.237
+0.237,
+0.236
 ],
 "net.en_tdnn_lstm_bn_q7.time_to_model_ready.pulse_240ms_wgpu": [
 0.264,
@@ -4589,7 +4723,8 @@ null,
 0.248,
 0.248,
 0.243,
-0.243
+0.243,
+0.24
 ],
 "net.en_tdnn_pyt_15M.active_at_before_optimize.pulse_120ms_wgpu": [
 45090000,
@@ -4597,6 +4732,7 @@ null,
 45090000,
 null,
 null,
+45090000,
 45090000,
 45090000,
 45090000,
@@ -4657,6 +4793,7 @@ null,
 15240000,
 15240000,
 15240000,
+15240000,
 15240000
 ],
 "net.en_tdnn_pyt_15M.evaltime.pulse_120ms_wgpu": [
@@ -4691,7 +4828,8 @@ null,
 0.003835,
 0.003212,
 0.003071,
-0.003263
+0.003263,
+0.003115
 ],
 "net.en_tdnn_pyt_15M.rsz_at_before_optimize.pulse_120ms_wgpu": [
 75220000,
@@ -4725,7 +4863,8 @@ null,
 74020000,
 74170000,
 75990000,
-76330000
+76330000,
+77250000
 ],
 "net.en_tdnn_pyt_15M.rsz_at_model_ready.pulse_120ms_wgpu": [
 277000000,
@@ -4759,7 +4898,8 @@ null,
 218600000,
 210800000,
 219900000,
-220300000
+220300000,
+219500000
 ],
 "net.en_tdnn_pyt_15M.time_to_before_optimize.pulse_120ms_wgpu": [
 0.104,
@@ -4793,7 +4933,8 @@ null,
 0.105,
 0.103,
 0.101,
-0.103
+0.103,
+0.1
 ],
 "net.en_tdnn_pyt_15M.time_to_model_ready.pulse_120ms_wgpu": [
 0.301,
@@ -4827,7 +4968,8 @@ null,
 0.266,
 0.265,
 0.258,
-0.263
+0.263,
+0.259
 ],
 "net.fastenhancer_b.active_at_before_optimize.frame_wgpu": [
 838600,
@@ -4839,6 +4981,7 @@ null,
 839100,
 839100,
 839100,
+835400,
 835400,
 835400,
 835400,
@@ -4895,6 +5038,7 @@ null,
 3547000,
 3548000,
 3548000,
+3548000,
 3548000
 ],
 "net.fastenhancer_b.evaltime.frame_wgpu": [
@@ -4929,7 +5073,8 @@ null,
 0.001915,
 0.0019,
 0.001931,
-0.00191
+0.00191,
+0.001905
 ],
 "net.fastenhancer_b.rsz_at_before_optimize.frame_wgpu": [
 29940000,
@@ -4963,7 +5108,8 @@ null,
 29270000,
 29250000,
 30810000,
-31170000
+31170000,
+31320000
 ],
 "net.fastenhancer_b.rsz_at_model_ready.frame_wgpu": [
 256200000,
@@ -4997,7 +5143,8 @@ null,
 207200000,
 198900000,
 207200000,
-207700000
+207700000,
+208000000
 ],
 "net.fastenhancer_b.time_to_before_optimize.frame_wgpu": [
 0.019,
@@ -5031,7 +5178,8 @@ null,
 0.02,
 0.019,
 0.02,
-0.02
+0.02,
+0.019
 ],
 "net.fastenhancer_b.time_to_model_ready.frame_wgpu": [
 0.19,
@@ -5065,7 +5213,8 @@ null,
 0.173,
 0.171,
 0.176,
-0.184
+0.184,
+0.172
 ],
 "net.fastenhancer_l.active_at_before_optimize.frame_wgpu": [
 5099000,
@@ -5077,6 +5226,7 @@ null,
 5100000,
 5100000,
 5100000,
+5096000,
 5096000,
 5096000,
 5096000,
@@ -5133,6 +5283,7 @@ null,
 3974000,
 3975000,
 3975000,
+3975000,
 3975000
 ],
 "net.fastenhancer_l.evaltime.frame_wgpu": [
@@ -5167,7 +5318,8 @@ null,
 0.003481,
 0.003472,
 0.003509,
-0.003465
+0.003465,
+0.003467
 ],
 "net.fastenhancer_l.rsz_at_before_optimize.frame_wgpu": [
 37090000,
@@ -5201,7 +5353,8 @@ null,
 35650000,
 35650000,
 37730000,
-37630000
+37630000,
+37970000
 ],
 "net.fastenhancer_l.rsz_at_model_ready.frame_wgpu": [
 260100000,
@@ -5235,7 +5388,8 @@ null,
 210500000,
 201500000,
 209800000,
-211000000
+211000000,
+210700000
 ],
 "net.fastenhancer_l.time_to_before_optimize.frame_wgpu": [
 0.034,
@@ -5269,7 +5423,8 @@ null,
 0.035,
 0.035,
 0.035,
-0.035
+0.035,
+0.034
 ],
 "net.fastenhancer_l.time_to_model_ready.frame_wgpu": [
 0.211,
@@ -5303,7 +5458,8 @@ null,
 0.185,
 0.187,
 0.187,
-0.186
+0.186,
+0.185
 ],
 "net.fastenhancer_m.active_at_before_optimize.frame_wgpu": [
 2555000,
@@ -5315,6 +5471,7 @@ null,
 2556000,
 2556000,
 2556000,
+2552000,
 2552000,
 2552000,
 2552000,
@@ -5371,6 +5528,7 @@ null,
 3753000,
 3754000,
 3754000,
+3754000,
 3754000
 ],
 "net.fastenhancer_m.evaltime.frame_wgpu": [
@@ -5405,7 +5563,8 @@ null,
 0.002679,
 0.002665,
 0.002695,
-0.002668
+0.002668,
+0.002662
 ],
 "net.fastenhancer_m.rsz_at_before_optimize.frame_wgpu": [
 32260000,
@@ -5439,7 +5598,8 @@ null,
 31200000,
 30790000,
 32860000,
-33210000
+33210000,
+33370000
 ],
 "net.fastenhancer_m.rsz_at_model_ready.frame_wgpu": [
 255300000,
@@ -5473,7 +5633,8 @@ null,
 207900000,
 199200000,
 209300000,
-207800000
+207800000,
+210000000
 ],
 "net.fastenhancer_m.time_to_before_optimize.frame_wgpu": [
 0.026,
@@ -5507,6 +5668,7 @@ null,
 0.026,
 0.026,
 0.027,
+0.026,
 0.026
 ],
 "net.fastenhancer_m.time_to_model_ready.frame_wgpu": [
@@ -5541,7 +5703,8 @@ null,
 0.178,
 0.182,
 0.179,
-0.179
+0.179,
+0.18
 ],
 "net.fastenhancer_s.active_at_before_optimize.frame_wgpu": [
 1288000,
@@ -5553,6 +5716,7 @@ null,
 1288000,
 1288000,
 1288000,
+1284000,
 1284000,
 1284000,
 1284000,
@@ -5609,6 +5773,7 @@ null,
 3622000,
 3622000,
 3622000,
+3623000,
 3623000
 ],
 "net.fastenhancer_s.evaltime.frame_wgpu": [
@@ -5643,7 +5808,8 @@ null,
 0.002056,
 0.002055,
 0.002067,
-0.002049
+0.002049,
+0.002056
 ],
 "net.fastenhancer_s.rsz_at_before_optimize.frame_wgpu": [
 30760000,
@@ -5677,7 +5843,8 @@ null,
 29710000,
 29630000,
 31320000,
-31940000
+31940000,
+31540000
 ],
 "net.fastenhancer_s.rsz_at_model_ready.frame_wgpu": [
 256200000,
@@ -5711,7 +5878,8 @@ null,
 207300000,
 199100000,
 208800000,
-208000000
+208000000,
+209300000
 ],
 "net.fastenhancer_s.time_to_before_optimize.frame_wgpu": [
 0.021,
@@ -5742,6 +5910,7 @@ null,
 0.022,
 0.022,
 0.023,
+0.022,
 0.022,
 0.022,
 0.022,
@@ -5779,7 +5948,8 @@ null,
 0.174,
 0.173,
 0.175,
-0.178
+0.178,
+0.175
 ],
 "net.fastenhancer_t.active_at_before_optimize.frame_wgpu": [
 484700,
@@ -5791,6 +5961,7 @@ null,
 485200,
 485200,
 485200,
+481400,
 481400,
 481400,
 481400,
@@ -5847,6 +6018,7 @@ null,
 3408000,
 3408000,
 3409000,
+3409000,
 3409000
 ],
 "net.fastenhancer_t.evaltime.frame_wgpu": [
@@ -5881,7 +6053,8 @@ null,
 0.001416,
 0.001416,
 0.001428,
-0.001505
+0.001505,
+0.001401
 ],
 "net.fastenhancer_t.rsz_at_before_optimize.frame_wgpu": [
 29860000,
@@ -5915,7 +6088,8 @@ null,
 28930000,
 28630000,
 30490000,
-30800000
+30800000,
+30940000
 ],
 "net.fastenhancer_t.rsz_at_model_ready.frame_wgpu": [
 253800000,
@@ -5949,6 +6123,7 @@ null,
 207600000,
 198800000,
 207200000,
+207800000,
 207800000
 ],
 "net.fastenhancer_t.time_to_before_optimize.frame_wgpu": [
@@ -5980,6 +6155,7 @@ null,
 0.016,
 0.016,
 0.017,
+0.016,
 0.016,
 0.016,
 0.016,
@@ -6017,7 +6193,8 @@ null,
 0.176,
 0.169,
 0.167,
-0.177
+0.177,
+0.168
 ],
 "net.gtcrn.active_at_before_optimize.frame_wgpu": [
 1683000,
@@ -6029,6 +6206,7 @@ null,
 1683000,
 1683000,
 1683000,
+1745000,
 1745000,
 1745000,
 1745000,
@@ -6085,6 +6263,7 @@ null,
 5422000,
 5422000,
 5422000,
+5422000,
 5422000
 ],
 "net.gtcrn.evaltime.frame_wgpu": [
@@ -6119,7 +6298,8 @@ null,
 0.007748,
 0.007754,
 0.00793,
-0.007731
+0.007731,
+0.007782
 ],
 "net.gtcrn.rsz_at_before_optimize.frame_wgpu": [
 33520000,
@@ -6153,7 +6333,8 @@ null,
 31940000,
 32010000,
 34210000,
-34330000
+34330000,
+34200000
 ],
 "net.gtcrn.rsz_at_model_ready.frame_wgpu": [
 259600000,
@@ -6187,7 +6368,8 @@ null,
 212000000,
 203500000,
 211600000,
-213600000
+213600000,
+213900000
 ],
 "net.gtcrn.time_to_before_optimize.frame_wgpu": [
 0.128,
@@ -6221,7 +6403,8 @@ null,
 0.134,
 0.134,
 0.135,
-0.133
+0.133,
+0.131
 ],
 "net.gtcrn.time_to_model_ready.frame_wgpu": [
 0.328,
@@ -6255,7 +6438,8 @@ null,
 0.318,
 0.318,
 0.322,
-0.314
+0.314,
+0.31
 ],
 "net.hey_snips_v1.active_at_before_optimize.400ms_wgpu": [
 1072000,
@@ -6263,6 +6447,7 @@ null,
 1072000,
 null,
 null,
+1072000,
 1072000,
 1072000,
 1072000,
@@ -6323,6 +6508,7 @@ null,
 2806000,
 2806000,
 2806000,
+2806000,
 2806000
 ],
 "net.hey_snips_v1.evaltime.400ms_wgpu": [
@@ -6357,7 +6543,8 @@ null,
 0.0001365,
 0.0001351,
 0.0001346,
-0.0001349
+0.0001349,
+0.0001354
 ],
 "net.hey_snips_v1.rsz_at_before_optimize.400ms_wgpu": [
 28020000,
@@ -6391,7 +6578,8 @@ null,
 25550000,
 25110000,
 27190000,
-27870000
+27870000,
+27270000
 ],
 "net.hey_snips_v1.rsz_at_model_ready.400ms_wgpu": [
 253800000,
@@ -6425,7 +6613,8 @@ null,
 202300000,
 193600000,
 204200000,
-202300000
+202300000,
+202400000
 ],
 "net.hey_snips_v1.time_to_before_optimize.400ms_wgpu": [
 0.004,
@@ -6441,6 +6630,7 @@ null,
 0.004,
 0.004,
 0.006,
+0.004,
 0.004,
 0.004,
 0.004,
@@ -6493,7 +6683,8 @@ null,
 0.146,
 0.143,
 0.143,
-0.144
+0.144,
+0.143
 ],
 "net.hey_snips_v31.active_at_before_optimize.400ms_wgpu": [
 890600,
@@ -6524,6 +6715,7 @@ null,
 891200,
 891200,
 891200,
+891300,
 891300,
 891300,
 891300,
@@ -6561,6 +6753,7 @@ null,
 2882000,
 2883000,
 2883000,
+2883000,
 2883000
 ],
 "net.hey_snips_v31.evaltime.400ms_wgpu": [
@@ -6595,7 +6788,8 @@ null,
 0.000211,
 0.0002006,
 0.0001944,
-0.0001902
+0.0001902,
+0.0001941
 ],
 "net.hey_snips_v31.rsz_at_before_optimize.400ms_wgpu": [
 29410000,
@@ -6629,7 +6823,8 @@ null,
 27120000,
 26830000,
 28950000,
-28820000
+28820000,
+29180000
 ],
 "net.hey_snips_v31.rsz_at_model_ready.400ms_wgpu": [
 253300000,
@@ -6663,7 +6858,8 @@ null,
 204300000,
 195600000,
 203800000,
-203500000
+203500000,
+204100000
 ],
 "net.hey_snips_v31.time_to_before_optimize.400ms_wgpu": [
 0.012,
@@ -6679,6 +6875,7 @@ null,
 0.012,
 0.013,
 0.014,
+0.012,
 0.012,
 0.012,
 0.012,
@@ -6731,7 +6928,8 @@ null,
 0.152,
 0.15,
 0.151,
-0.153
+0.153,
+0.151
 ],
 "net.hey_snips_v4_model17.active_at_before_optimize.2sec_wgpu": [
 1672000,
@@ -6765,6 +6963,7 @@ null,
 1673000,
 1673000,
 1673000,
+1673000,
 1673000
 ],
 "net.hey_snips_v4_model17.active_at_before_optimize.pulse8_wgpu": [
@@ -6773,6 +6972,7 @@ null,
 1640000,
 null,
 null,
+1640000,
 1640000,
 1640000,
 1640000,
@@ -6833,6 +7033,7 @@ null,
 3950000,
 3953000,
 3953000,
+3953000,
 3953000
 ],
 "net.hey_snips_v4_model17.active_at_model_ready.pulse8_wgpu": [
@@ -6865,6 +7066,7 @@ null,
 3931000,
 3932000,
 3946000,
+3948000,
 3948000,
 3948000,
 3948000
@@ -6901,7 +7103,8 @@ null,
 0.001338,
 0.001425,
 0.001443,
-0.001425
+0.001425,
+0.001434
 ],
 "net.hey_snips_v4_model17.evaltime.pulse8_wgpu": [
 0.003685,
@@ -6935,7 +7138,8 @@ null,
 0.00108,
 0.001178,
 0.001105,
-0.001097
+0.001097,
+0.001068
 ],
 "net.hey_snips_v4_model17.rsz_at_before_optimize.2sec_wgpu": [
 31410000,
@@ -6969,7 +7173,8 @@ null,
 29590000,
 29070000,
 31240000,
-31470000
+31470000,
+31430000
 ],
 "net.hey_snips_v4_model17.rsz_at_before_optimize.pulse8_wgpu": [
 32180000,
@@ -7003,7 +7208,8 @@ null,
 30830000,
 30530000,
 32730000,
-32580000
+32580000,
+32510000
 ],
 "net.hey_snips_v4_model17.rsz_at_model_ready.2sec_wgpu": [
 258600000,
@@ -7037,7 +7243,8 @@ null,
 206700000,
 197500000,
 208200000,
-208000000
+208000000,
+208400000
 ],
 "net.hey_snips_v4_model17.rsz_at_model_ready.pulse8_wgpu": [
 258500000,
@@ -7071,7 +7278,8 @@ null,
 207800000,
 199500000,
 207700000,
-209200000
+209200000,
+209700000
 ],
 "net.hey_snips_v4_model17.time_to_before_optimize.2sec_wgpu": [
 0.139,
@@ -7103,6 +7311,7 @@ null,
 0.138,
 0.138,
 0.136,
+0.135,
 0.135,
 0.135,
 0.135
@@ -7139,7 +7348,8 @@ null,
 0.222,
 0.222,
 0.222,
-0.222
+0.222,
+0.218
 ],
 "net.hey_snips_v4_model17.time_to_model_ready.2sec_wgpu": [
 0.339,
@@ -7173,7 +7383,8 @@ null,
 0.292,
 0.287,
 0.288,
-0.291
+0.291,
+0.288
 ],
 "net.hey_snips_v4_model17.time_to_model_ready.pulse8_wgpu": [
 0.423,
@@ -7207,7 +7418,8 @@ null,
 0.38,
 0.372,
 0.38,
-0.379
+0.379,
+0.378
 ],
 "net.hey_snips_v4_model17_nnef.active_at_before_optimize.pulse8_wgpu": [
 1631000,
@@ -7215,6 +7427,7 @@ null,
 1631000,
 null,
 null,
+1631000,
 1631000,
 1631000,
 1631000,
@@ -7275,6 +7488,7 @@ null,
 3937000,
 3939000,
 3939000,
+3939000,
 3939000
 ],
 "net.hey_snips_v4_model17_nnef.evaltime.pulse8_wgpu": [
@@ -7309,7 +7523,8 @@ null,
 0.001258,
 0.001268,
 0.001248,
-0.00125
+0.00125,
+0.001272
 ],
 "net.hey_snips_v4_model17_nnef.rsz_at_before_optimize.pulse8_wgpu": [
 27220000,
@@ -7343,7 +7558,8 @@ null,
 25750000,
 25580000,
 27860000,
-27950000
+27950000,
+28030000
 ],
 "net.hey_snips_v4_model17_nnef.rsz_at_model_ready.pulse8_wgpu": [
 255000000,
@@ -7377,6 +7593,7 @@ null,
 203800000,
 195000000,
 205800000,
+204000000,
 204000000
 ],
 "net.hey_snips_v4_model17_nnef.time_to_before_optimize.pulse8_wgpu": [
@@ -7411,7 +7628,8 @@ null,
 0.028,
 0.028,
 0.027,
-0.028
+0.028,
+0.027
 ],
 "net.hey_snips_v4_model17_nnef.time_to_model_ready.pulse8_wgpu": [
 0.216,
@@ -7445,7 +7663,8 @@ null,
 0.176,
 0.178,
 0.177,
-0.178
+0.178,
+0.179
 ],
 "net.inceptionv1q.active_at_before_optimize.pass_wgpu": [
 7686000,
@@ -7453,6 +7672,7 @@ null,
 7686000,
 null,
 null,
+7686000,
 7686000,
 7686000,
 7686000,
@@ -7513,6 +7733,7 @@ null,
 11790000,
 11790000,
 11790000,
+11790000,
 11790000
 ],
 "net.inceptionv1q.evaltime.pass_wgpu": [
@@ -7547,7 +7768,8 @@ null,
 0.04496,
 0.0438,
 0.04455,
-0.04524
+0.04524,
+0.04479
 ],
 "net.inceptionv1q.rsz_at_before_optimize.pass_wgpu": [
 33370000,
@@ -7581,7 +7803,8 @@ null,
 32370000,
 31760000,
 34020000,
-33960000
+33960000,
+34030000
 ],
 "net.inceptionv1q.rsz_at_model_ready.pass_wgpu": [
 266300000,
@@ -7615,7 +7838,8 @@ null,
 219800000,
 209100000,
 219700000,
-219800000
+219800000,
+220200000
 ],
 "net.inceptionv1q.time_to_before_optimize.pass_wgpu": [
 0.067,
@@ -7649,7 +7873,8 @@ null,
 0.067,
 0.067,
 0.066,
-0.068
+0.068,
+0.067
 ],
 "net.inceptionv1q.time_to_model_ready.pass_wgpu": [
 0.407,
@@ -7683,7 +7908,8 @@ null,
 0.375,
 0.372,
 0.368,
-0.374
+0.374,
+0.369
 ],
 "net.inceptionv3.active_at_before_optimize.pass_wgpu": [
 97310000,
@@ -7716,6 +7942,7 @@ null,
 97310000,
 97310000,
 97310000,
+97260000,
 97260000,
 97260000
 ],
@@ -7751,6 +7978,7 @@ null,
 5901000,
 5903000,
 5851000,
+5851000,
 5851000
 ],
 "net.inceptionv3.evaltime.pass_wgpu": [
@@ -7785,7 +8013,8 @@ null,
 0.01188,
 0.01173,
 0.01164,
-0.01156
+0.01156,
+0.01169
 ],
 "net.inceptionv3.rsz_at_before_optimize.pass_wgpu": [
 134500000,
@@ -7819,7 +8048,8 @@ null,
 135100000,
 135100000,
 137100000,
-134300000
+134300000,
+136100000
 ],
 "net.inceptionv3.rsz_at_model_ready.pass_wgpu": [
 192200000,
@@ -7853,7 +8083,8 @@ null,
 211000000,
 204100000,
 213300000,
-213100000
+213100000,
+213200000
 ],
 "net.inceptionv3.time_to_before_optimize.pass_wgpu": [
 0.323,
@@ -7887,7 +8118,8 @@ null,
 0.327,
 0.316,
 0.314,
-0.312
+0.312,
+0.31
 ],
 "net.inceptionv3.time_to_model_ready.pass_wgpu": [
 0.598,
@@ -7921,7 +8153,8 @@ null,
 0.587,
 0.557,
 0.558,
-0.558
+0.558,
+0.556
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.active_at_before_optimize.2600ms_wgpu": [
 9610000,
@@ -7929,6 +8162,7 @@ null,
 9610000,
 null,
 null,
+9610000,
 9610000,
 9610000,
 9610000,
@@ -7989,6 +8223,7 @@ null,
 9620000,
 9620000,
 9620000,
+9620000,
 9620000
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.active_at_model_ready.2600ms_wgpu": [
@@ -8023,6 +8258,7 @@ null,
 4703000,
 4703000,
 4704000,
+4705000,
 4705000
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.active_at_model_ready.pulse_240ms_wgpu": [
@@ -8056,6 +8292,7 @@ null,
 4720000,
 4725000,
 4725000,
+4726000,
 4726000,
 4726000
 ],
@@ -8091,7 +8328,8 @@ null,
 0.003927,
 0.003839,
 0.003827,
-0.003829
+0.003829,
+0.003832
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.evaltime.pulse_240ms_wgpu": [
 0.002525,
@@ -8125,7 +8363,8 @@ null,
 0.002024,
 0.002019,
 0.002008,
-0.002021
+0.002021,
+0.002015
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.rsz_at_before_optimize.2600ms_wgpu": [
 40640000,
@@ -8159,7 +8398,8 @@ null,
 39390000,
 39010000,
 40970000,
-40820000
+40820000,
+40930000
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.rsz_at_before_optimize.pulse_240ms_wgpu": [
 41580000,
@@ -8193,7 +8433,8 @@ null,
 40990000,
 40860000,
 42690000,
-42720000
+42720000,
+42920000
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.rsz_at_model_ready.2600ms_wgpu": [
 260500000,
@@ -8227,7 +8468,8 @@ null,
 210200000,
 201700000,
 209700000,
-210000000
+210000000,
+210400000
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.rsz_at_model_ready.pulse_240ms_wgpu": [
 263300000,
@@ -8261,7 +8503,8 @@ null,
 210000000,
 203500000,
 211800000,
-211800000
+211800000,
+211700000
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.time_to_before_optimize.2600ms_wgpu": [
 0.058,
@@ -8295,6 +8538,7 @@ null,
 0.058,
 0.057,
 0.056,
+0.057,
 0.057
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.time_to_before_optimize.pulse_240ms_wgpu": [
@@ -8328,6 +8572,7 @@ null,
 0.074,
 0.073,
 0.073,
+0.072,
 0.072,
 0.072
 ],
@@ -8363,6 +8608,7 @@ null,
 0.21,
 0.209,
 0.208,
+0.21,
 0.21
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.time_to_model_ready.pulse_240ms_wgpu": [
@@ -8397,7 +8643,8 @@ null,
 0.221,
 0.219,
 0.217,
-0.221
+0.221,
+0.218
 ],
 "net.mobilenet_v1_1.active_at_before_optimize.pass_wgpu": [
 17460000,
@@ -8405,6 +8652,7 @@ null,
 17460000,
 null,
 null,
+17460000,
 17460000,
 17460000,
 17460000,
@@ -8465,6 +8713,7 @@ null,
 3654000,
 3654000,
 3654000,
+3654000,
 3654000
 ],
 "net.mobilenet_v1_1.evaltime.pass_wgpu": [
@@ -8499,6 +8748,7 @@ null,
 0.002153,
 0.002077,
 0.00152,
+0.001541,
 0.001541
 ],
 "net.mobilenet_v1_1.rsz_at_before_optimize.pass_wgpu": [
@@ -8533,7 +8783,8 @@ null,
 45250000,
 45010000,
 46980000,
-47330000
+47330000,
+47340000
 ],
 "net.mobilenet_v1_1.rsz_at_model_ready.pass_wgpu": [
 188800000,
@@ -8567,7 +8818,8 @@ null,
 206900000,
 198200000,
 208400000,
-208800000
+208800000,
+208700000
 ],
 "net.mobilenet_v1_1.time_to_before_optimize.pass_wgpu": [
 0.052,
@@ -8601,7 +8853,8 @@ null,
 0.052,
 0.052,
 0.051,
-0.052
+0.052,
+0.051
 ],
 "net.mobilenet_v1_1.time_to_model_ready.pass_wgpu": [
 0.239,
@@ -8635,7 +8888,8 @@ null,
 0.209,
 0.226,
 0.201,
-0.203
+0.203,
+0.204
 ],
 "net.mobilenet_v2_1.active_at_before_optimize.pass_wgpu": [
 25140000,
@@ -8643,6 +8897,7 @@ null,
 25140000,
 null,
 null,
+25140000,
 25140000,
 25140000,
 25140000,
@@ -8703,6 +8958,7 @@ null,
 4205000,
 4206000,
 4206000,
+4206000,
 4206000
 ],
 "net.mobilenet_v2_1.evaltime.pass_wgpu": [
@@ -8737,7 +8993,8 @@ null,
 0.003755,
 0.003605,
 0.002814,
-0.002865
+0.002865,
+0.002842
 ],
 "net.mobilenet_v2_1.rsz_at_before_optimize.pass_wgpu": [
 56950000,
@@ -8771,7 +9028,8 @@ null,
 54350000,
 54080000,
 55950000,
-56010000
+56010000,
+56100000
 ],
 "net.mobilenet_v2_1.rsz_at_model_ready.pass_wgpu": [
 189100000,
@@ -8805,7 +9063,8 @@ null,
 207000000,
 198900000,
 209300000,
-208700000
+208700000,
+209000000
 ],
 "net.mobilenet_v2_1.time_to_before_optimize.pass_wgpu": [
 0.079,
@@ -8839,7 +9098,8 @@ null,
 0.081,
 0.076,
 0.077,
-0.079
+0.079,
+0.078
 ],
 "net.mobilenet_v2_1.time_to_model_ready.pass_wgpu": [
 0.261,
@@ -8873,7 +9133,8 @@ null,
 0.27,
 0.241,
 0.237,
-0.239
+0.239,
+0.241
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.active_at_before_optimize.wgpu": [
 59980000,
@@ -8881,6 +9142,7 @@ null,
 59980000,
 null,
 null,
+59980000,
 59980000,
 59980000,
 59980000,
@@ -8941,6 +9203,7 @@ null,
 2971000,
 2971000,
 2971000,
+2971000,
 2971000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.evaltime.wgpu": [
@@ -8975,7 +9238,8 @@ null,
 0.001015,
 0.0004191,
 0.0003687,
-0.0003682
+0.0003682,
+0.0003676
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.rsz_at_before_optimize.wgpu": [
 89180000,
@@ -9009,6 +9273,7 @@ null,
 87330000,
 87520000,
 89590000,
+89880000,
 89880000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.rsz_at_model_ready.wgpu": [
@@ -9043,7 +9308,8 @@ null,
 205100000,
 196900000,
 206900000,
-207100000
+207100000,
+207600000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.time_to_before_optimize.wgpu": [
 0.041,
@@ -9077,7 +9343,8 @@ null,
 0.042,
 0.043,
 0.043,
-0.044
+0.044,
+0.043
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.time_to_model_ready.wgpu": [
 0.253,
@@ -9111,7 +9378,8 @@ null,
 0.196,
 0.22,
 0.198,
-0.198
+0.198,
+0.203
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.active_at_before_optimize.wgpu": [
 2365000000,
@@ -9124,6 +9392,7 @@ null,
 2364000000,
 2364000000,
 null,
+2364000000,
 2364000000,
 2364000000,
 2364000000,
@@ -9179,6 +9448,7 @@ null,
 9198000,
 9149000,
 9149000,
+9149000,
 9149000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.evaltime.wgpu": [
@@ -9213,7 +9483,8 @@ null,
 0.2076,
 0.1879,
 0.1878,
-0.1881
+0.1881,
+0.188
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.rsz_at_before_optimize.wgpu": [
 2411000000,
@@ -9247,7 +9518,8 @@ null,
 2412000000,
 2411000000,
 2412000000,
-2406000000
+2406000000,
+2405000000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.rsz_at_model_ready.wgpu": [
 277800000,
@@ -9281,7 +9553,8 @@ null,
 227800000,
 219700000,
 227900000,
-223900000
+223900000,
+222800000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.time_to_before_optimize.wgpu": [
 5.198,
@@ -9315,7 +9588,8 @@ null,
 5.218,
 5.207,
 4.947,
-5.612
+5.612,
+5.786
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.time_to_model_ready.wgpu": [
 6.446,
@@ -9349,7 +9623,8 @@ null,
 6.38,
 6.344,
 6.094,
-6.896
+6.896,
+7.139
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.active_at_before_optimize.wgpu": [
 2365000000,
@@ -9364,6 +9639,7 @@ null,
 null,
 2365000000,
 2365000000,
+2366000000,
 2366000000,
 2366000000,
 2366000000,
@@ -9417,6 +9693,7 @@ null,
 10090000,
 10090000,
 10090000,
+10090000,
 10090000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.evaltime.wgpu": [
@@ -9451,7 +9728,8 @@ null,
 0.059,
 0.02755,
 0.01613,
-0.01615
+0.01615,
+0.01614
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.rsz_at_before_optimize.wgpu": [
 2412000000,
@@ -9485,7 +9763,8 @@ null,
 2416000000,
 2416000000,
 2413000000,
-2408000000
+2408000000,
+2407000000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.rsz_at_model_ready.wgpu": [
 279800000,
@@ -9519,7 +9798,8 @@ null,
 232400000,
 228100000,
 232100000,
-226600000
+226600000,
+226800000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.time_to_before_optimize.wgpu": [
 11.44,
@@ -9553,7 +9833,8 @@ null,
 7.323,
 7.3,
 7.13,
-7.66
+7.66,
+7.903
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.time_to_model_ready.wgpu": [
 12.66,
@@ -9587,7 +9868,8 @@ null,
 8.551,
 8.507,
 8.322,
-8.997
+8.997,
+9.309
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.active_at_before_optimize.wgpu": [
 37920000,
@@ -9595,6 +9877,7 @@ null,
 37920000,
 null,
 null,
+37920000,
 37920000,
 37920000,
 37920000,
@@ -9655,6 +9938,7 @@ null,
 2811000,
 2811000,
 2811000,
+2811000,
 2811000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.evaltime.wgpu": [
@@ -9689,7 +9973,8 @@ null,
 0.0006928,
 0.0002571,
 0.0002432,
-0.000244
+0.000244,
+0.0002427
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.rsz_at_before_optimize.wgpu": [
 65360000,
@@ -9723,7 +10008,8 @@ null,
 63780000,
 63800000,
 65550000,
-69740000
+69740000,
+65750000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.rsz_at_model_ready.wgpu": [
 184400000,
@@ -9757,7 +10043,8 @@ null,
 203300000,
 195000000,
 204800000,
-207500000
+207500000,
+205600000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.time_to_before_optimize.wgpu": [
 0.04,
@@ -9790,6 +10077,7 @@ null,
 0.041,
 0.041,
 0.041,
+0.04,
 0.04,
 0.04
 ],
@@ -9825,7 +10113,8 @@ null,
 0.202,
 0.211,
 0.215,
-0.207
+0.207,
+0.203
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.active_at_before_optimize.wgpu": [
 519800,
@@ -9841,6 +10130,7 @@ null,
 520300,
 520300,
 520300,
+518300,
 518300,
 518300,
 518300,
@@ -9893,6 +10183,7 @@ null,
 3098000,
 2999000,
 2999000,
+2999000,
 2999000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.evaltime.wgpu": [
@@ -9927,7 +10218,8 @@ null,
 0.0006239,
 0.0004774,
 0.0004763,
-0.0004754
+0.0004754,
+0.000477
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.rsz_at_before_optimize.wgpu": [
 28940000,
@@ -9961,7 +10253,8 @@ null,
 27420000,
 27390000,
 29140000,
-29860000
+29860000,
+29820000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.rsz_at_model_ready.wgpu": [
 251600000,
@@ -9995,7 +10288,8 @@ null,
 204200000,
 196000000,
 204300000,
-204900000
+204900000,
+204600000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.time_to_before_optimize.wgpu": [
 0.013,
@@ -10029,6 +10323,7 @@ null,
 0.013,
 0.012,
 0.013,
+0.012,
 0.012
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.time_to_model_ready.wgpu": [
@@ -10063,7 +10358,8 @@ null,
 0.16,
 0.159,
 0.16,
-0.159
+0.159,
+0.16
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.active_at_before_optimize.wgpu": [
 248500,
@@ -10094,6 +10390,7 @@ null,
 249000,
 249000,
 249000,
+249100,
 249100,
 249100,
 249100,
@@ -10131,6 +10428,7 @@ null,
 2832000,
 2832000,
 2832000,
+2832000,
 2832000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.evaltime.wgpu": [
@@ -10165,7 +10463,8 @@ null,
 0.0004194,
 0.0004212,
 0.0004216,
-0.000423
+0.000423,
+0.0004181
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.rsz_at_before_optimize.wgpu": [
 30310000,
@@ -10199,7 +10498,8 @@ null,
 29770000,
 29590000,
 31650000,
-31870000
+31870000,
+31980000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.rsz_at_model_ready.wgpu": [
 251600000,
@@ -10233,7 +10533,8 @@ null,
 206400000,
 197900000,
 206400000,
-206900000
+206900000,
+207100000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.time_to_before_optimize.wgpu": [
 0.029,
@@ -10267,6 +10568,7 @@ null,
 0.029,
 0.029,
 0.03,
+0.029,
 0.029
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.time_to_model_ready.wgpu": [
@@ -10301,7 +10603,8 @@ null,
 0.177,
 0.175,
 0.179,
-0.176
+0.176,
+0.174
 ],
 "net.parakeet_tdt_600m_v3_f32f32_decoder_pass.active_at_before_optimize.wgpu": [
 47440000,
@@ -10309,6 +10612,7 @@ null,
 47440000,
 null,
 null,
+47440000,
 47440000,
 47440000,
 47440000,
@@ -10369,6 +10673,7 @@ null,
 2963000,
 2963000,
 2963000,
+2963000,
 2963000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_decoder_pass.evaltime.wgpu": [
@@ -10403,7 +10708,8 @@ null,
 0.001015,
 0.0004163,
 0.0003669,
-0.0003667
+0.0003667,
+0.0003674
 ],
 "net.parakeet_tdt_600m_v3_f32f32_decoder_pass.rsz_at_before_optimize.wgpu": [
 78550000,
@@ -10437,7 +10743,8 @@ null,
 77790000,
 77820000,
 78640000,
-78420000
+78420000,
+79990000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_decoder_pass.rsz_at_model_ready.wgpu": [
 276900000,
@@ -10471,7 +10778,8 @@ null,
 205100000,
 196800000,
 206800000,
-206800000
+206800000,
+207300000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_decoder_pass.time_to_before_optimize.wgpu": [
 0.039,
@@ -10505,7 +10813,8 @@ null,
 0.04,
 0.039,
 0.038,
-0.039
+0.039,
+0.04
 ],
 "net.parakeet_tdt_600m_v3_f32f32_decoder_pass.time_to_model_ready.wgpu": [
 0.236,
@@ -10539,7 +10848,8 @@ null,
 0.192,
 0.198,
 0.194,
-0.199
+0.199,
+0.194
 ],
 "net.parakeet_tdt_600m_v3_f32f32_encoder_1s.active_at_before_optimize.wgpu": [
 2342000000,
@@ -10547,6 +10857,7 @@ null,
 2342000000,
 null,
 null,
+2342000000,
 2342000000,
 2342000000,
 2342000000,
@@ -10607,6 +10918,7 @@ null,
 9479000,
 9447000,
 9448000,
+9448000,
 9448000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_encoder_1s.evaltime.wgpu": [
@@ -10641,7 +10953,8 @@ null,
 0.2121,
 0.1708,
 0.1694,
-0.1697
+0.1697,
+0.1694
 ],
 "net.parakeet_tdt_600m_v3_f32f32_encoder_1s.rsz_at_before_optimize.wgpu": [
 2388000000,
@@ -10675,7 +10988,8 @@ null,
 2392000000,
 2392000000,
 2386000000,
-2386000000
+2386000000,
+2384000000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_encoder_1s.rsz_at_model_ready.wgpu": [
 278200000,
@@ -10709,7 +11023,8 @@ null,
 232200000,
 223200000,
 227900000,
-226000000
+226000000,
+224300000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_encoder_1s.time_to_before_optimize.wgpu": [
 9.114,
@@ -10743,7 +11058,8 @@ null,
 9.146,
 9.107,
 9.018,
-9.482
+9.482,
+9.87
 ],
 "net.parakeet_tdt_600m_v3_f32f32_encoder_1s.time_to_model_ready.wgpu": [
 10.61,
@@ -10777,7 +11093,8 @@ null,
 10.28,
 10.24,
 10.13,
-10.74
+10.74,
+11.24
 ],
 "net.parakeet_tdt_600m_v3_f32f32_joint_pass.active_at_before_optimize.wgpu": [
 25380000,
@@ -10785,6 +11102,7 @@ null,
 25380000,
 null,
 null,
+25380000,
 25380000,
 25380000,
 25380000,
@@ -10845,6 +11163,7 @@ null,
 2810000,
 2810000,
 2810000,
+2810000,
 2810000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_joint_pass.evaltime.wgpu": [
@@ -10879,7 +11198,8 @@ null,
 0.0004125,
 0.0001796,
 0.0001402,
-0.0001391
+0.0001391,
+0.000141
 ],
 "net.parakeet_tdt_600m_v3_f32f32_joint_pass.rsz_at_before_optimize.wgpu": [
 54970000,
@@ -10913,7 +11233,8 @@ null,
 52970000,
 52870000,
 55030000,
-55260000
+55260000,
+55620000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_joint_pass.rsz_at_model_ready.wgpu": [
 184300000,
@@ -10947,7 +11268,8 @@ null,
 203200000,
 194700000,
 205200000,
-205400000
+205400000,
+205600000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_joint_pass.time_to_before_optimize.wgpu": [
 0.03,
@@ -10981,6 +11303,7 @@ null,
 0.031,
 0.031,
 0.03,
+0.031,
 0.031
 ],
 "net.parakeet_tdt_600m_v3_f32f32_joint_pass.time_to_model_ready.wgpu": [
@@ -11015,7 +11338,8 @@ null,
 0.184,
 0.188,
 0.196,
-0.206
+0.206,
+0.199
 ],
 "net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.active_at_before_optimize.wgpu": [
 579100,
@@ -11046,6 +11370,7 @@ null,
 577500,
 577500,
 577500,
+577600,
 577600,
 577600,
 577600,
@@ -11083,6 +11408,7 @@ null,
 3189000,
 3104000,
 3104000,
+3104000,
 3104000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.evaltime.wgpu": [
@@ -11117,7 +11443,8 @@ null,
 0.00107,
 0.0006967,
 0.0006973,
-0.000692
+0.000692,
+0.0006923
 ],
 "net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.rsz_at_before_optimize.wgpu": [
 29080000,
@@ -11151,7 +11478,8 @@ null,
 27340000,
 27390000,
 29370000,
-29700000
+29700000,
+29970000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.rsz_at_model_ready.wgpu": [
 253600000,
@@ -11185,7 +11513,8 @@ null,
 204600000,
 196400000,
 204600000,
-205100000
+205100000,
+205200000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.time_to_before_optimize.wgpu": [
 0.015,
@@ -11203,6 +11532,7 @@ null,
 0.016,
 0.015,
 0.017,
+0.015,
 0.015,
 0.015,
 0.015,
@@ -11253,6 +11583,7 @@ null,
 0.167,
 0.161,
 0.163,
+0.163,
 0.163
 ],
 "net.ppocrv6_tiny_det.active_at_before_optimize.640px_wgpu": [
@@ -11261,6 +11592,7 @@ null,
 null,
 null,
 null,
+2757000,
 2757000,
 2757000,
 2757000,
@@ -11321,6 +11653,7 @@ null,
 4582000,
 4583000,
 4583000,
+4583000,
 4583000
 ],
 "net.ppocrv6_tiny_det.evaltime.640px_wgpu": [
@@ -11355,7 +11688,8 @@ null,
 0.004932,
 0.004917,
 0.004925,
-0.004705
+0.004705,
+0.004702
 ],
 "net.ppocrv6_tiny_det.rsz_at_before_optimize.640px_wgpu": [
 null,
@@ -11389,7 +11723,8 @@ null,
 30650000,
 30370000,
 32880000,
-32720000
+32720000,
+32900000
 ],
 "net.ppocrv6_tiny_det.rsz_at_model_ready.640px_wgpu": [
 null,
@@ -11423,7 +11758,8 @@ null,
 208100000,
 199300000,
 209800000,
-209500000
+209500000,
+210600000
 ],
 "net.ppocrv6_tiny_det.time_to_before_optimize.640px_wgpu": [
 null,
@@ -11457,7 +11793,8 @@ null,
 0.064,
 0.064,
 0.063,
-0.064
+0.064,
+0.063
 ],
 "net.ppocrv6_tiny_det.time_to_model_ready.640px_wgpu": [
 null,
@@ -11491,7 +11828,8 @@ null,
 0.234,
 0.253,
 0.23,
-0.226
+0.226,
+0.235
 ],
 "net.ppocrv6_tiny_rec.active_at_before_optimize.320px_wgpu": [
 null,
@@ -11523,6 +11861,7 @@ null,
 4955000,
 4955000,
 4956000,
+4927000,
 4927000,
 4927000,
 4927000
@@ -11559,6 +11898,7 @@ null,
 3506000,
 3465000,
 3465000,
+3465000,
 3465000
 ],
 "net.ppocrv6_tiny_rec.evaltime.320px_wgpu": [
@@ -11593,7 +11933,8 @@ null,
 0.0007928,
 0.0007745,
 0.0007731,
-0.0007652
+0.0007652,
+0.0007761
 ],
 "net.ppocrv6_tiny_rec.rsz_at_before_optimize.320px_wgpu": [
 null,
@@ -11627,7 +11968,8 @@ null,
 35240000,
 35170000,
 36700000,
-37130000
+37130000,
+37050000
 ],
 "net.ppocrv6_tiny_rec.rsz_at_model_ready.320px_wgpu": [
 null,
@@ -11661,6 +12003,7 @@ null,
 207900000,
 199800000,
 209700000,
+210500000,
 210500000
 ],
 "net.ppocrv6_tiny_rec.time_to_before_optimize.320px_wgpu": [
@@ -11695,7 +12038,8 @@ null,
 0.027,
 0.026,
 0.026,
-0.026
+0.026,
+0.025
 ],
 "net.ppocrv6_tiny_rec.time_to_model_ready.320px_wgpu": [
 null,
@@ -11729,7 +12073,8 @@ null,
 0.178,
 0.173,
 0.172,
-0.178
+0.178,
+0.177
 ],
 "net.sd15_dummy_f16_unet_step_b2.active_at_before_optimize.wgpu": [
 null,
@@ -11737,6 +12082,7 @@ null,
 null,
 null,
 null,
+1722000000,
 1722000000,
 1722000000,
 1722000000,
@@ -11797,6 +12143,7 @@ null,
 11250000,
 11260000,
 11260000,
+11260000,
 11260000
 ],
 "net.sd15_dummy_f16_unet_step_b2.evaltime.wgpu": [
@@ -11831,7 +12178,8 @@ null,
 0.3369,
 0.3365,
 0.3355,
-0.3359
+0.3359,
+0.3358
 ],
 "net.sd15_dummy_f16_unet_step_b2.rsz_at_before_optimize.wgpu": [
 null,
@@ -11865,7 +12213,8 @@ null,
 1865000000,
 1865000000,
 1861000000,
-1861000000
+1861000000,
+1855000000
 ],
 "net.sd15_dummy_f16_unet_step_b2.rsz_at_model_ready.wgpu": [
 null,
@@ -11899,7 +12248,8 @@ null,
 234400000,
 226400000,
 232200000,
-230500000
+230500000,
+228600000
 ],
 "net.sd15_dummy_f16_unet_step_b2.time_to_before_optimize.wgpu": [
 null,
@@ -11933,7 +12283,8 @@ null,
 10.43,
 10.5,
 10.28,
-10.51
+10.51,
+10.43
 ],
 "net.sd15_dummy_f16_unet_step_b2.time_to_model_ready.wgpu": [
 null,
@@ -11967,7 +12318,8 @@ null,
 12.97,
 12.94,
 12.5,
-13.04
+13.04,
+13
 ],
 "net.sd15_dummy_f16_vae_decoder_512px.active_at_before_optimize.wgpu": [
 null,
@@ -11975,6 +12327,7 @@ null,
 null,
 null,
 null,
+99390000,
 99390000,
 99390000,
 99390000,
@@ -12035,6 +12388,7 @@ null,
 4743000,
 4744000,
 4744000,
+4744000,
 4744000
 ],
 "net.sd15_dummy_f16_vae_decoder_512px.evaltime.wgpu": [
@@ -12069,7 +12423,8 @@ null,
 0.2937,
 0.2938,
 0.2936,
-0.2938
+0.2938,
+0.2937
 ],
 "net.sd15_dummy_f16_vae_decoder_512px.rsz_at_before_optimize.wgpu": [
 null,
@@ -12103,7 +12458,8 @@ null,
 131800000,
 132200000,
 131800000,
-133000000
+133000000,
+132400000
 ],
 "net.sd15_dummy_f16_vae_decoder_512px.rsz_at_model_ready.wgpu": [
 null,
@@ -12137,7 +12493,8 @@ null,
 213700000,
 205100000,
 213500000,
-214300000
+214300000,
+214200000
 ],
 "net.sd15_dummy_f16_vae_decoder_512px.time_to_before_optimize.wgpu": [
 null,
@@ -12171,7 +12528,8 @@ null,
 0.601,
 0.598,
 0.597,
-0.595
+0.595,
+0.594
 ],
 "net.sd15_dummy_f16_vae_decoder_512px.time_to_model_ready.wgpu": [
 null,
@@ -12205,7 +12563,8 @@ null,
 1.119,
 1.121,
 1.13,
-1.116
+1.116,
+1.121
 ],
 "net.sd15_dummy_f32_unet_step_b2.active_at_before_optimize.wgpu": [
 null,
@@ -12220,6 +12579,7 @@ null,
 3441000000,
 null,
 null,
+3441000000,
 3441000000,
 3441000000,
 3441000000,
@@ -12273,6 +12633,7 @@ null,
 11200000,
 11210000,
 11210000,
+11210000,
 11210000
 ],
 "net.sd15_dummy_f32_unet_step_b2.evaltime.wgpu": [
@@ -12307,7 +12668,8 @@ null,
 0.3847,
 0.3831,
 0.3834,
-0.3829
+0.3829,
+0.3828
 ],
 "net.sd15_dummy_f32_unet_step_b2.rsz_at_before_optimize.wgpu": [
 null,
@@ -12341,7 +12703,8 @@ null,
 3542000000,
 3540000000,
 3568000000,
-3523000000
+3523000000,
+3520000000
 ],
 "net.sd15_dummy_f32_unet_step_b2.rsz_at_model_ready.wgpu": [
 null,
@@ -12375,7 +12738,8 @@ null,
 234500000,
 225800000,
 237900000,
-232000000
+232000000,
+230700000
 ],
 "net.sd15_dummy_f32_unet_step_b2.time_to_before_optimize.wgpu": [
 null,
@@ -12409,7 +12773,8 @@ null,
 10.04,
 10.06,
 9.757,
-10.21
+10.21,
+10.12
 ],
 "net.sd15_dummy_f32_unet_step_b2.time_to_model_ready.wgpu": [
 null,
@@ -12443,7 +12808,8 @@ null,
 13.92,
 13.93,
 12.7,
-14.05
+14.05,
+14.06
 ],
 "net.sd15_dummy_f32_vae_decoder_512px.active_at_before_optimize.wgpu": [
 null,
@@ -12451,6 +12817,7 @@ null,
 null,
 null,
 null,
+198300000,
 198300000,
 198300000,
 198300000,
@@ -12511,6 +12878,7 @@ null,
 4691000,
 4692000,
 4692000,
+4692000,
 4692000
 ],
 "net.sd15_dummy_f32_vae_decoder_512px.evaltime.wgpu": [
@@ -12545,7 +12913,8 @@ null,
 0.3465,
 0.3464,
 0.3464,
-0.3465
+0.3465,
+0.3464
 ],
 "net.sd15_dummy_f32_vae_decoder_512px.rsz_at_before_optimize.wgpu": [
 null,
@@ -12579,7 +12948,8 @@ null,
 232200000,
 231000000,
 231800000,
-232100000
+232100000,
+234100000
 ],
 "net.sd15_dummy_f32_vae_decoder_512px.rsz_at_model_ready.wgpu": [
 null,
@@ -12613,7 +12983,8 @@ null,
 215600000,
 207000000,
 215700000,
-215800000
+215800000,
+216100000
 ],
 "net.sd15_dummy_f32_vae_decoder_512px.time_to_before_optimize.wgpu": [
 null,
@@ -12647,7 +13018,8 @@ null,
 0.568,
 0.562,
 0.565,
-0.568
+0.568,
+0.564
 ],
 "net.sd15_dummy_f32_vae_decoder_512px.time_to_model_ready.wgpu": [
 null,
@@ -12681,7 +13053,8 @@ null,
 1.211,
 1.199,
 1.203,
-1.212
+1.212,
+1.215
 ],
 "net.speaker_id.active_at_before_optimize.pulse8_wgpu": [
 968900,
@@ -12712,6 +13085,7 @@ null,
 969500,
 969500,
 969500,
+969600,
 969600,
 969600,
 969600,
@@ -12749,6 +13123,7 @@ null,
 3115000,
 3115000,
 3115000,
+3115000,
 3115000
 ],
 "net.speaker_id.evaltime.pulse8_wgpu": [
@@ -12783,7 +13158,8 @@ null,
 0.0005764,
 0.0005801,
 0.000576,
-0.0005732
+0.0005732,
+0.0005759
 ],
 "net.speaker_id.rsz_at_before_optimize.pulse8_wgpu": [
 30190000,
@@ -12817,7 +13193,8 @@ null,
 29650000,
 29310000,
 31630000,
-31490000
+31490000,
+31760000
 ],
 "net.speaker_id.rsz_at_model_ready.pulse8_wgpu": [
 253800000,
@@ -12851,7 +13228,8 @@ null,
 204400000,
 197700000,
 206400000,
-206400000
+206400000,
+206800000
 ],
 "net.speaker_id.time_to_before_optimize.pulse8_wgpu": [
 0.011,
@@ -12867,6 +13245,7 @@ null,
 0.012,
 0.014,
 0.019,
+0.011,
 0.011,
 0.011,
 0.011,
@@ -12919,7 +13298,8 @@ null,
 0.157,
 0.159,
 0.156,
-0.159
+0.159,
+0.156
 ],
 "net.trunet.active_at_before_optimize.pulse1_f32_wgpu": [
 3860000,
@@ -12927,6 +13307,7 @@ null,
 3860000,
 null,
 null,
+3860000,
 3860000,
 3860000,
 3860000,
@@ -12987,6 +13368,7 @@ null,
 4551000,
 4551000,
 4552000,
+4552000,
 4552000
 ],
 "net.trunet.evaltime.pulse1_f32_wgpu": [
@@ -13021,7 +13403,8 @@ null,
 0.001617,
 0.001474,
 0.001464,
-0.001465
+0.001465,
+0.001452
 ],
 "net.trunet.rsz_at_before_optimize.pulse1_f32_wgpu": [
 32770000,
@@ -13055,7 +13438,8 @@ null,
 31880000,
 31870000,
 33830000,
-34070000
+34070000,
+34040000
 ],
 "net.trunet.rsz_at_model_ready.pulse1_f32_wgpu": [
 255900000,
@@ -13089,7 +13473,8 @@ null,
 208500000,
 200000000,
 210200000,
-208300000
+208300000,
+208400000
 ],
 "net.trunet.time_to_before_optimize.pulse1_f32_wgpu": [
 0.096,
@@ -13123,7 +13508,8 @@ null,
 0.097,
 0.097,
 0.097,
-0.098
+0.098,
+0.096
 ],
 "net.trunet.time_to_model_ready.pulse1_f32_wgpu": [
 0.269,
@@ -13157,7 +13543,8 @@ null,
 0.254,
 0.251,
 0.259,
-0.254
+0.254,
+0.255
 ],
 "net.voicecom_fake_quant.active_at_before_optimize.2sec_wgpu": [
 2816000,
@@ -13183,6 +13570,7 @@ null,
 2817000,
 2817000,
 2817000,
+2805000,
 2805000,
 2805000,
 2805000,
@@ -13225,6 +13613,7 @@ null,
 2923000,
 2923000,
 2923000,
+2923000,
 2923000
 ],
 "net.voicecom_fake_quant.evaltime.2sec_wgpu": [
@@ -13259,7 +13648,8 @@ null,
 0.001023,
 0.001027,
 0.001007,
-0.001027
+0.001027,
+0.001018
 ],
 "net.voicecom_fake_quant.rsz_at_before_optimize.2sec_wgpu": [
 32910000,
@@ -13293,7 +13683,8 @@ null,
 30580000,
 29990000,
 32440000,
-32490000
+32490000,
+32600000
 ],
 "net.voicecom_fake_quant.rsz_at_model_ready.2sec_wgpu": [
 186300000,
@@ -13327,7 +13718,8 @@ null,
 205400000,
 196100000,
 205100000,
-207200000
+207200000,
+207100000
 ],
 "net.voicecom_fake_quant.time_to_before_optimize.2sec_wgpu": [
 0.012,
@@ -13361,7 +13753,8 @@ null,
 0.012,
 0.012,
 0.012,
-0.012
+0.012,
+0.011
 ],
 "net.voicecom_fake_quant.time_to_model_ready.2sec_wgpu": [
 0.189,
@@ -13395,7 +13788,8 @@ null,
 0.155,
 0.154,
 0.158,
-0.156
+0.156,
+0.158
 ],
 "net.voicecom_float.active_at_before_optimize.2sec_wgpu": [
 2641000,
@@ -13403,6 +13797,7 @@ null,
 2641000,
 null,
 null,
+2642000,
 2642000,
 2642000,
 2642000,
@@ -13463,6 +13858,7 @@ null,
 2832000,
 2832000,
 2832000,
+2832000,
 2832000
 ],
 "net.voicecom_float.evaltime.2sec_wgpu": [
@@ -13497,7 +13893,8 @@ null,
 0.0004094,
 0.0004055,
 0.0004082,
-0.0004066
+0.0004066,
+0.0004078
 ],
 "net.voicecom_float.rsz_at_before_optimize.2sec_wgpu": [
 31420000,
@@ -13531,7 +13928,8 @@ null,
 29490000,
 28950000,
 31000000,
-31310000
+31310000,
+31260000
 ],
 "net.voicecom_float.rsz_at_model_ready.2sec_wgpu": [
 185300000,
@@ -13565,6 +13963,7 @@ null,
 203800000,
 195200000,
 205300000,
+205600000,
 205600000
 ],
 "net.voicecom_float.time_to_before_optimize.2sec_wgpu": [
@@ -13597,6 +13996,7 @@ null,
 0.008,
 0.007,
 0.008,
+0.007,
 0.007,
 0.007,
 0.007
@@ -13633,7 +14033,8 @@ null,
 0.15,
 0.149,
 0.149,
-0.15
+0.15,
+0.153
 ]
 }
 }
