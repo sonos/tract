@@ -4,11 +4,11 @@ const stamped = file => import(`./${file}?stamp=${stamp}`);
 // The page posts the first command as soon as the worker is created. A top-level
 // await yields before onmessage exists, and Chrome drops that message, so the
 // canvas is transferred and never drawn. Load the modules in the handler instead.
-let model, modelUrl, rvmScale, formatR, holdsUncertainMask, shouldWarp, isFirefox, createCompletionPoll;
+let model, modelUrl, rvmScale, formatR, holdsUncertainMask, runsF16, shouldWarp, isFirefox, createCompletionPoll;
 const modulesReady = Promise.all([
   stamped('models.mjs'), stamped('pairing.mjs'), stamped('firefox-poll.mjs'),
 ]).then(([models, pairing, firefoxPoll]) => {
-  ({model, modelUrl, rvmScale, formatR, holdsUncertainMask} = models);
+  ({model, modelUrl, rvmScale, formatR, holdsUncertainMask, runsF16} = models);
   shouldWarp = pairing.shouldWarp;
   ({isFirefox, createCompletionPoll} = firefoxPoll);
 });
@@ -157,7 +157,7 @@ async function command(type, payload) {
     post({status: `Preparing ${m.name} on WebGPU…`});
     segmenter = m.kind === 'rvm'
       ? await Segmenter.create_rvm(bytes, width, height, ratio)
-      : await Segmenter.create(bytes, width, height, m.mean, m.std, m.f16Body === true);
+      : await Segmenter.create(bytes, width, height, m.mean, m.std, runsF16(m, payload.f16));
     const ops = audit(segmenter);
     tractDevice = segmenter.device();
     device = await (await navigator.gpu.requestAdapter({powerPreference: 'high-performance'})).requestDevice();
@@ -185,7 +185,7 @@ async function command(type, payload) {
     framesSeen = inferredFrame = 0;
     lastPresented = null;
     rvmSize = m.kind === 'rvm' ? {width, height} : null;
-    return {ops, ratio};
+    return {ops, ratio, f16: runsF16(m, payload.f16)};
   }
   if (type === 'ratio') {
     if (!rvmSize) throw new Error('R factor is only for RVM');

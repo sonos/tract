@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {MODELS, CAPTURES, model, capture, modelUrl, rvmRatio, rvmNetworkSize, rvmScale, formatR, frameShape, modelsFor, holdsUncertainMask} from './models.mjs';
+import {MODELS, CAPTURES, model, capture, modelUrl, rvmRatio, rvmNetworkSize, rvmScale, formatR, frameShape, modelsFor, holdsUncertainMask, offersF16, runsF16} from './models.mjs';
 
 test('every model is pinned and has a 16-pixel-aligned size', () => {
   assert.equal(new Set(MODELS.map(m => m.id)).size, MODELS.length);
@@ -107,4 +107,14 @@ test('capture sizes are independent of the model size', () => {
   assert.deepEqual(CAPTURES.map(c => [c.width, c.height]), [[320, 180], [640, 360], [960, 540], [1280, 720], [1920, 1080]]);
   assert.equal(capture('640x360').width, 640);
   assert.throws(() => capture('4000x3000'), /Unsupported/);
+});
+
+test('f16 is an option for MediaPipe and MODNet and always on for Longpipe', () => {
+  assert.deepEqual(MODELS.filter(offersF16).map(m => m.id), ['mediapipe', 'mediapipe-landscape', 'modnet']);
+  assert.equal(runsF16(model('modnet'), false), false);
+  assert.equal(runsF16(model('modnet'), true), true);
+  assert.equal(runsF16(model('mediapipe'), undefined), false);
+  assert.equal(runsF16(model('lp-xs'), false), true);
+  assert.equal(runsF16(model('pp-humanseg-v2'), true), false);
+  assert.equal(runsF16(model('rvm'), true), false);
 });
