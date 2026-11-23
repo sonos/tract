@@ -465,6 +465,9 @@ inventory::submit! {
 /// Every term it weighs is a shape term, so a dim the caller could not pin leaves it nothing to
 /// say: it declines, and the tier below states what a wide AMX or SME tile is worth at an unknown
 /// shape.
+///
+/// A kind forced with `TRACT_CPU_AARCH64_KIND` takes this tier out, so the forced kind's rules
+/// pick the kernels.
 #[cfg(target_os = "macos")]
 fn apple_chip_preferred(
     _isa: &IsaSet,
@@ -490,7 +493,10 @@ inventory::submit! {
         arch: Some(crate::isa::Arch::Aarch64),
         precedence: 8,
         name: "apple-chip-model",
-        applies: |_| matches!(apple_chip(), Some("m1") | Some("m4")),
+        applies: |_| {
+            crate::knobs::TRACT_CPU_AARCH64_KIND.get().is_none()
+                && matches!(apple_chip(), Some("m1") | Some("m4"))
+        },
         preferred: apple_chip_preferred,
     }
 }
