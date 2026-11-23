@@ -1,6 +1,6 @@
 const stamp = new URL(import.meta.url).searchParams.get('stamp') || Date.now();
 const stamped = file => import(`./${file}?stamp=${stamp}`);
-const {CAPTURES, model, capture, rvmNetworkSize, formatR, modelsFor, holdsUncertainMask, offersF16} = await stamped('models.mjs');
+const {CAPTURES, model, capture, rvmNetworkSize, formatR, modelsFor, holdsUncertainMask, offersF16, sharesDeviceByDefault} = await stamped('models.mjs');
 const {GpuClient} = await stamped('gpu-client.js');
 const {FrameRate} = await stamped('frame-rate.mjs');
 const {emptyPump, rememberFrame, startSend, finishSend} = await stamped('frame-pump.mjs');
@@ -207,12 +207,13 @@ $('hold').onchange = () => {
   state.client.request('hold', {enabled: $('hold').checked}).catch(error => status(error.message));
 };
 
-const LOAD_CONTROLS = ['model', 'camera', 'capture', 'f16'];
+const LOAD_CONTROLS = ['model', 'camera', 'capture', 'f16', 'shared-device'];
 
 function liveStatus(ratio, ops) {
   const scale = ratio !== undefined && ratio !== null ? ` (R=${formatR(Number(ratio))})` : '';
   const precision = state.f16 ? ', f16' : '';
-  status(`Live: ${state.modelName}, ${state.modelNote}${scale}${precision}, ${ops} GPU ops.`);
+  const devices = state.sharedDevice ? 'one GPU device' : 'two GPU devices';
+  status(`Live: ${state.modelName}, ${state.modelNote}${scale}${precision}, ${ops} GPU ops, ${devices}.`);
 }
 
 // Keep the chosen model when it still matches. Otherwise use RVM, which fits every shape.
@@ -226,6 +227,7 @@ function showModels() {
   showScale();
   showHold();
   showF16();
+  showGpuOptions();
 }
 
 function showHold() {
@@ -236,6 +238,11 @@ function showHold() {
 function showF16() {
   $('f16-label').hidden = !offersF16(model($('model').value));
   $('f16').checked = false;
+}
+
+// The device default follows the model.
+function showGpuOptions() {
+  $('shared-device').checked = sharesDeviceByDefault(model($('model').value));
 }
 
 // The factor for this capture size. The long side of the inner frame stays at 512.
@@ -252,8 +259,10 @@ $('model').onchange = () => {
   showScale();
   showHold();
   showF16();
+  showGpuOptions();
 };
 $('f16').onchange = () => state.running && (stop(), start());
+$('shared-device').onchange = () => state.running && (stop(), start());
 $('capture').onchange = showModels;
 showModels();
 
@@ -423,8 +432,10 @@ async function start() {
       if (message.mask !== undefined && state.running) maskReady(message.mask);
     });
     const f16 = offersF16(m) && $('f16').checked;
-    const prepared = await state.client.request('init', {canvas, model: m.id, ratio: 'auto', f16}, [canvas], 180000);
+    const sharedDevice = $('shared-device').checked;
+    const prepared = await state.client.request('init', {canvas, model: m.id, ratio: 'auto', f16, sharedDevice}, [canvas], 180000);
     state.f16 = prepared.f16;
+    state.sharedDevice = prepared.sharedDevice;
     if (generation !== state.generation) return;
     await applyBackground();
     bar(1);

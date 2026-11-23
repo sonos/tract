@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {MODELS, CAPTURES, model, capture, modelUrl, rvmRatio, rvmNetworkSize, rvmScale, formatR, frameShape, modelsFor, holdsUncertainMask, offersF16, runsF16} from './models.mjs';
+import {MODELS, CAPTURES, model, capture, modelUrl, rvmRatio, rvmNetworkSize, rvmScale, formatR, frameShape, modelsFor, holdsUncertainMask, offersF16, runsF16, sharesDeviceByDefault} from './models.mjs';
 
 test('every model is pinned and has a 16-pixel-aligned size', () => {
   assert.equal(new Set(MODELS.map(m => m.id)).size, MODELS.length);
@@ -117,4 +117,8 @@ test('f16 is an option for MediaPipe and MODNet and always on for Longpipe', () 
   assert.equal(runsF16(model('lp-xs'), false), true);
   assert.equal(runsF16(model('pp-humanseg-v2'), true), false);
   assert.equal(runsF16(model('rvm'), true), false);
+});
+
+test('only the fast models share the GPU device by default', () => {
+  assert.deepEqual(MODELS.filter(sharesDeviceByDefault).map(m => m.id), ['mediapipe', 'mediapipe-landscape']);
 });
