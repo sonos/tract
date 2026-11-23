@@ -74,6 +74,7 @@ impl ModelTransform for WgpuTransform {
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         crate::kernels::pool::link_translators();
         let shader_f16 = wgpu_context().shader_f16();
+        tract_gpu::rewrite_rules::conv_nhwc::restore_channels_first(model)?;
         Rewriter::default()
             .with_rule_for("flatten_unfused_sdpa", flatten_unfused_sdpa)
             .rewrite(&(), model)?;
