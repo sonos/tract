@@ -23,6 +23,7 @@ export const MODELS = [
     mean: [0, 0, 0],
     std: [1, 1, 1],
     f16Option: true,
+    sharedDevice: true,
   },
   {
     id: 'mediapipe-landscape',
@@ -37,6 +38,7 @@ export const MODELS = [
     mean: [0, 0, 0],
     std: [1, 1, 1],
     f16Option: true,
+    sharedDevice: true,
   },
   {
     id: 'pp-humanseg-v2',
@@ -191,6 +193,13 @@ export function offersF16(entry) {
 // Whether the network runs in f16: always for an f16Body model, on request for an f16Option one.
 export function runsF16(entry, requested) {
   return entry.f16Body === true || (offersF16(entry) && requested === true);
+}
+
+// A model fast enough to share tract's GPU device with the compositor. Its mask is then sampled
+// where tract wrote it. A slower model keeps a device of its own, so the video is not held
+// behind each inference on one in-order queue.
+export function sharesDeviceByDefault(entry) {
+  return entry.sharedDevice === true;
 }
 
 export function capture(id) {

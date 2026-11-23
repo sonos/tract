@@ -1,14 +1,14 @@
-// Runs the segmenter and the compositor off the page's thread, each on a WebGPU device of its own.
+// Runs the segmenter and the compositor off the page's thread, on one WebGPU device or on two.
 const stamp = new URL(import.meta.url).searchParams.get('stamp') || Date.now();
 const stamped = file => import(`./${file}?stamp=${stamp}`);
 // The page posts the first command as soon as the worker is created. A top-level
 // await yields before onmessage exists, and Chrome drops that message, so the
 // canvas is transferred and never drawn. Load the modules in the handler instead.
-let model, modelUrl, rvmScale, formatR, holdsUncertainMask, runsF16, shouldWarp, isFirefox, createCompletionPoll;
+let model, modelUrl, rvmScale, formatR, holdsUncertainMask, runsF16, sharesDeviceByDefault, shouldWarp, isFirefox, createCompletionPoll;
 const modulesReady = Promise.all([
   stamped('models.mjs'), stamped('pairing.mjs'), stamped('firefox-poll.mjs'),
 ]).then(([models, pairing, firefoxPoll]) => {
-  ({model, modelUrl, rvmScale, formatR, holdsUncertainMask, runsF16} = models);
+  ({model, modelUrl, rvmScale, formatR, holdsUncertainMask, runsF16, sharesDeviceByDefault} = models);
   shouldWarp = pairing.shouldWarp;
   ({isFirefox, createCompletionPoll} = firefoxPoll);
 });
@@ -109,6 +109,29 @@ class MaskRelay {
   }
 }
 
+// The compositor runs on tract's device and samples tract's mask texture, so nothing is copied.
+// Composites queue behind the inference before them, which a fast model keeps short. Busy until
+// the GPU finishes the inference, so inferences never pile up ahead of the composites.
+class SharedMask {
+  constructor() {
+    this.busy = false;
+  }
+
+  async infer() {
+    this.busy = true;
+    try {
+      const started = performance.now();
+      segmenter.run(modelCanvas);
+      composer.setMaskFrame(this.frameId);
+      showMask();
+      await tractPoll.track(tractDevice.queue.onSubmittedWorkDone());
+      post({mask: performance.now() - started});
+    } finally {
+      this.busy = false;
+    }
+  }
+}
+
 // Composite the latest uploaded frame again. Skipped when too many draws are
 // still on the GPU; the next camera frame shows the mask instead.
 // The checkbox asks for the fill. A frame inference is already computing waits
@@ -159,8 +182,11 @@ async function command(type, payload) {
       ? await Segmenter.create_rvm(bytes, width, height, ratio)
       : await Segmenter.create(bytes, width, height, m.mean, m.std, runsF16(m, payload.f16));
     const ops = audit(segmenter);
+    const shared = payload.sharedDevice ?? sharesDeviceByDefault(m);
     tractDevice = segmenter.device();
-    device = await (await navigator.gpu.requestAdapter({powerPreference: 'high-performance'})).requestDevice();
+    device = shared
+      ? tractDevice
+      : await (await navigator.gpu.requestAdapter({powerPreference: 'high-performance'})).requestDevice();
     const poll = gpu => createCompletionPoll({
       firefox: isFirefox(navigator.userAgent),
       device: gpu,
@@ -168,13 +194,19 @@ async function command(type, payload) {
       clear: id => clearTimeout(id),
     });
     tractPoll = poll(tractDevice);
-    compositePoll = poll(device);
-    for (const d of [tractDevice, device]) {
+    compositePoll = shared ? tractPoll : poll(device);
+    for (const d of new Set([tractDevice, device])) {
       d.addEventListener('uncapturederror', event => post({fatal: `WebGPU: ${event.error.message}`}));
       d.lost.then(info => post({fatal: `WebGPU device lost: ${info.message}`}));
     }
-    const target = device.createTexture({size: [width, height], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST});
-    mask = new MaskRelay(segmenter.mask_texture(), target, width, height);
+    let target;
+    if (shared) {
+      target = segmenter.mask_texture();
+      mask = new SharedMask();
+    } else {
+      target = device.createTexture({size: [width, height], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST});
+      mask = new MaskRelay(segmenter.mask_texture(), target, width, height);
+    }
     composer = await Compositor.create(device, target, payload.canvas);
     canHold = holdsUncertainMask(m);
     composer.setHold(canHold);
@@ -185,7 +217,7 @@ async function command(type, payload) {
     framesSeen = inferredFrame = 0;
     lastPresented = null;
     rvmSize = m.kind === 'rvm' ? {width, height} : null;
-    return {ops, ratio, f16: runsF16(m, payload.f16)};
+    return {ops, ratio, f16: runsF16(m, payload.f16), sharedDevice: shared};
   }
   if (type === 'ratio') {
     if (!rvmSize) throw new Error('R factor is only for RVM');
