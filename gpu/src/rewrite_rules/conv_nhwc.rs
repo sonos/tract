@@ -98,6 +98,37 @@ fn propagate_nhwc_move(
     Ok(change_axes(model, &change, &locked, &[], &mut explored)?.map(|(patch, _)| patch))
 }
 
+/// Moves the channel axis of channel-last convs back in front, together with the region each one
+/// heads.
+///
+/// Core's declutter moves a depthwise conv's channel axis last when the CPU has a channel-last
+/// depthwise kernel. A backend whose kernels are channel-first calls this before lowering. Only
+/// the model interfaces are locked, so a region the declutter flipped in a channel-first model
+/// flips back whole, and a model that is channel-last at its interfaces keeps its layout.
+pub fn restore_channels_first(model: &mut TypedModel) -> TractResult<()> {
+    Rewriter::default()
+        .with_rule_for("restore_channels_first", restore_channels_first_conv)
+        .rewrite(&(), model)
+}
+
+fn restore_channels_first_conv(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    _name: &str,
+    conv: &Conv,
+) -> TractResult<Option<TypedModelPatch>> {
+    let format = conv.pool_spec.data_format;
+    rule_ensure!(format.c_is_last());
+    let rank = model.outlet_fact(node.inputs[0])?.rank();
+    let change =
+        AxisChange { outlet: node.inputs[0], op: AxisOp::Move(rank - 1, format.has_n() as usize) };
+    let mut locked: TVec<OutletId> = model.input_outlets()?.into();
+    locked.extend(model.output_outlets()?.iter().copied());
+    let mut explored = Default::default();
+    Ok(change_axes(model, &change, &locked, &[], &mut explored)?.map(|(patch, _)| patch))
+}
+
 fn declutter_identity(
     _ctx: &(),
     model: &TypedModel,
@@ -116,4 +147,103 @@ fn declutter_axis_op(
     op: &AxisOp,
 ) -> TractResult<Option<TypedModelPatch>> {
     op.declutter(model, node)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tract_core::ops::cnn::{PaddingSpec, PoolSpec};
+
+    fn conv(format: DataFormat, kernel: usize, ci: usize, co: usize, group: usize) -> Conv {
+        let pad = kernel / 2;
+        Conv {
+            pool_spec: PoolSpec {
+                data_format: format,
+                kernel_shape: tvec![kernel, kernel],
+                padding: PaddingSpec::Explicit(tvec![pad, pad], tvec![pad, pad]),
+                dilations: None,
+                strides: None,
+                input_channels: ci,
+                output_channels: co,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group,
+            q_params: None,
+        }
+    }
+
+    fn wire_conv(
+        model: &mut TypedModel,
+        name: &str,
+        op: Conv,
+        input: OutletId,
+    ) -> TractResult<OutletId> {
+        let (co, ci, k) =
+            (op.output_channels(), op.input_channels() / op.group, op.pool_spec.kernel_shape[0]);
+        let kernel = Tensor::from_shape(
+            &[co, ci, k, k],
+            &(0..co * ci * k * k).map(|i| (i % 7) as f32 * 0.1).collect::<Vec<_>>(),
+        )?;
+        let kernel = model.add_const(format!("{name}.k"), kernel)?;
+        let bias = model.add_const(format!("{name}.b"), Tensor::zero::<f32>(&[co])?)?;
+        Ok(model.wire_node(name, op, &[input, kernel, bias])?[0])
+    }
+
+    fn conv_formats(model: &TypedModel) -> Vec<DataFormat> {
+        model
+            .nodes()
+            .iter()
+            .filter_map(|n| n.op_as::<Conv>())
+            .map(|c| c.pool_spec.data_format)
+            .collect()
+    }
+
+    /// Pointwise, depthwise, pointwise on a channel-first input, decluttered by core. Where the
+    /// CPU has a channel-last depthwise kernel, the declutter moves the depthwise channel axis
+    /// last and the pointwise einsums absorb the move.
+    fn decluttered_block(c: usize) -> TractResult<TypedModel> {
+        let mut model = TypedModel::default();
+        let mut wire = model.add_source("input", f32::fact([1, c, 8, 8]))?;
+        wire = wire_conv(&mut model, "pw0", conv(DataFormat::NCHW, 1, c, c, 1), wire)?;
+        wire = wire_conv(&mut model, "dw", conv(DataFormat::NCHW, 3, c, c, c), wire)?;
+        wire = wire_conv(&mut model, "pw1", conv(DataFormat::NCHW, 1, c, c, 1), wire)?;
+        model.select_output_outlets(&[wire])?;
+        model.into_decluttered()
+    }
+
+    #[test]
+    fn restores_a_region_core_flipped() -> TractResult<()> {
+        let flipped = decluttered_block(16)?;
+        if tract_linalg::routines::depthwise_c_f32().is_some() {
+            ensure!(
+                conv_formats(&flipped).iter().any(|f| f.c_is_last()),
+                "declutter kept the layout"
+            );
+        }
+        let mut model = flipped.clone();
+        restore_channels_first(&mut model)?;
+        ensure!(conv_formats(&model).iter().all(|f| !f.c_is_last()), "{:?}", conv_formats(&model));
+        ensure!(model.nodes().len() == flipped.nodes().len(), "restore changed the node count");
+        let input: Tensor = Tensor::from_shape(
+            &[1, 16, 8, 8],
+            &(0..1024).map(|i| (i % 13) as f32 - 6.).collect::<Vec<_>>(),
+        )?;
+        let expected = flipped.into_runnable()?.run(tvec![input.clone().into()])?;
+        let got = model.into_runnable()?.run(tvec![input.into()])?;
+        expected[0].close_enough(&got[0], true)
+    }
+
+    #[test]
+    fn keeps_a_channel_last_model() -> TractResult<()> {
+        let c = 16;
+        let mut model = TypedModel::default();
+        let input = model.add_source("input", f32::fact([1, 8, 8, c]))?;
+        let out = wire_conv(&mut model, "dw", conv(DataFormat::NHWC, 3, c, c, c), input)?;
+        model.select_output_outlets(&[out])?;
+        let before = model.clone();
+        restore_channels_first(&mut model)?;
+        ensure!(conv_formats(&model) == conv_formats(&before));
+        ensure!(model.nodes().len() == before.nodes().len());
+        Ok(())
+    }
 }
