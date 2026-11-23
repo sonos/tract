@@ -194,16 +194,15 @@ avx512amx_mmm_i32_8x8_{{suffix}} proc
     // We need ymm{n} = column n of C with 8 i32 lanes (rows m=0..7) — the
     // dispatcher epilogue convention.  So we (a) load 8 ymms = 8 rows of C,
     // then (b) transpose 8x8 i32 in place.
-    sub             rsp,    256
+    sub             rsp,    512
     mov             r10,    rsp
     mov             r11,    32
     tilestored      [r10 + r11 * 1], tmm0
 
     {% for r in range(0, 8) %}
+    vmovdqu         [r10 + {{ 256 + r * 32 }}], ymm{{r}}
     vmovdqu         ymm{{r}}, [r10 + {{ r * 32 }}]
     {% endfor %}
-
-    add             rsp,    256
 
     // 8x8 i32 transpose: ymm0..ymm7 row-major -> column-major in place.
     // Stage 1: interleave 32-bit dwords pairwise (ymm0..ymm7 -> ymm8..ymm15).
@@ -237,14 +236,16 @@ avx512amx_mmm_i32_8x8_{{suffix}} proc
     vperm2i128      ymm14,  ymm2, ymm6, 0x31    // col 6
     vperm2i128      ymm15,  ymm3, ymm7, 0x31    // col 7
 
-    vmovdqa         ymm0,   ymm8
-    vmovdqa         ymm1,   ymm9
-    vmovdqa         ymm2,   ymm10
-    vmovdqa         ymm3,   ymm11
-    vmovdqa         ymm4,   ymm12
-    vmovdqa         ymm5,   ymm13
-    vmovdqa         ymm6,   ymm14
-    vmovdqa         ymm7,   ymm15
+    vpaddd          ymm0,   ymm8, [rsp + 256]
+    vpaddd          ymm1,   ymm9, [rsp + 288]
+    vpaddd          ymm2,   ymm10, [rsp + 320]
+    vpaddd          ymm3,   ymm11, [rsp + 352]
+    vpaddd          ymm4,   ymm12, [rsp + 384]
+    vpaddd          ymm5,   ymm13, [rsp + 416]
+    vpaddd          ymm6,   ymm14, [rsp + 448]
+    vpaddd          ymm7,   ymm15, [rsp + 480]
+
+    add             rsp,    512
 
     jmp             {{L}}non_linear_loop
 
