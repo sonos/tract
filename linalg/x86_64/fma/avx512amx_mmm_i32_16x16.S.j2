@@ -215,7 +215,7 @@ avx512amx_mmm_i32_16x16_{{suffix}} proc
     tilestored      [r10 + r11 * 1], tmm0
 
     {% for m in range(0, 16) %}
-    vmovdqu32       zmm{{m}}, [r10 + {{ m * 64 }}]
+    vpaddd          zmm{{m}}, zmm{{m}}, [r10 + {{ m * 64 }}]
     {% endfor %}
 
     add             rsp,    1024
