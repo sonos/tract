@@ -682,7 +682,7 @@ dependencies = [
  "float-ord",
  "log",
  "ndarray",
- "rand 0.10.3",
+ "rand 0.10.4",
  "reqwest",
  "serde",
  "serde_json",
@@ -694,9 +694,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.11.1"
+version = "1.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ff2a8126fff0f8c839080d619675a585e61720bb12d2baceae45769fd66f155"
+checksum = "02f0e023adb368345ce0ca6cdfc0f24a06554468d0e8503e14a0841de79bfa69"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -1099,7 +1099,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7359bf1de037ddada72729c3acec9b040f3468400c6e9e740b01ba0cd2e89562"
 dependencies = [
  "half",
- "libloading 0.9.0",
+ "libloading 0.9.1",
 ]
 
 [[package]]
@@ -2506,9 +2506,9 @@ dependencies = [
 
 [[package]]
 name = "libloading"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "754ca22de805bb5744484a5b151a9e1a8e837d5dc232c2d7d8c2e3492edc8b60"
+checksum = "a1832accd5a4ca2795ace4d05d15c4039be15b62d3b950eff99746a990e3cc10"
 dependencies = [
  "cfg-if 1.0.4",
  "windows-link",
@@ -3614,7 +3614,7 @@ dependencies = [
  "chacha20",
  "core_detect",
  "num-traits",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rand_xorshift",
  "regex-syntax",
  "rusty-fork",
@@ -3624,9 +3624,9 @@ dependencies = [
 
 [[package]]
 name = "prost"
-version = "0.14.4"
+version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1"
+checksum = "3ef0b569d1d907ab3a28596aee62cf1f61dacb0529a4bedcd8e7460e2d5228b4"
 dependencies = [
  "bytes",
  "prost-derive",
@@ -3634,12 +3634,12 @@ dependencies = [
 
 [[package]]
 name = "prost-derive"
-version = "0.14.4"
+version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
+checksum = "1ad9c5423459fa2f729b8d9235fab810aa29628b171467744fc86d21460ad70d"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -3647,9 +3647,9 @@ dependencies = [
 
 [[package]]
 name = "prost-types"
-version = "0.14.4"
+version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f94967dc7688f3054c7fac87473ffae4cc4c3904800e2d9f5b857246d8963b0a"
+checksum = "f29a7c4c7a84cef41a53d338a2d10d4f1b043ea5c3dde26db22ee2c9c1b1c75b"
 dependencies = [
  "prost",
 ]
@@ -3764,9 +3764,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.10.3"
+version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65c9fb96cbc91e3478eaae79a69fcd3f1ae4ad052e471fe6732fff548984b4af"
+checksum = "8f6fa277c67e6ea590466f04c3fe82cb509f0864fe470643e5570de9514a9b11"
 dependencies = [
  "chacha20",
  "getrandom 0.4.3",
@@ -3815,7 +3815,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d431c2703ccf129de4d45253c03f49ebb22b97d6ad79ee3ecfc7e3f4862c1d8"
 dependencies = [
  "num-traits",
- "rand 0.10.3",
+ "rand 0.10.4",
 ]
 
 [[package]]
@@ -4528,7 +4528,7 @@ dependencies = [
  "image",
  "kdam",
  "ndarray",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rand_distr 0.6.0",
  "tokenizers",
  "tract",
@@ -4543,7 +4543,7 @@ dependencies = [
  "image",
  "kdam",
  "ndarray",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rand_distr 0.6.0",
  "tokenizers",
  "tract",
@@ -4558,7 +4558,7 @@ dependencies = [
  "image",
  "kdam",
  "ndarray",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rand_distr 0.6.0",
  "tokenizers",
  "tract",
@@ -5422,12 +5422,12 @@ dependencies = [
  "derive-new",
  "downcast-rs",
  "inventory",
- "libloading 0.9.0",
+ "libloading 0.9.1",
  "log",
  "num-complex",
  "num-traits",
  "proptest",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rustfft",
  "tract-core",
  "tract-gpu",
@@ -5523,7 +5523,7 @@ dependencies = [
  "lazy_static",
  "log",
  "nu-ansi-term",
- "rand 0.10.3",
+ "rand 0.10.4",
  "serde",
  "serde_json",
  "tract-core",
@@ -5578,7 +5578,7 @@ dependencies = [
  "num-traits",
  "objc",
  "proptest",
- "rand 0.10.3",
+ "rand 0.10.4",
  "tract-core",
  "tract-gpu",
  "tract-pulse-opl",
@@ -5646,7 +5646,7 @@ dependencies = [
  "num-rational",
  "num-traits",
  "prost",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rayon",
  "smallvec",
  "tempfile",
@@ -5664,7 +5664,7 @@ dependencies = [
  "env_logger",
  "getrandom 0.4.3",
  "log",
- "rand 0.10.3",
+ "rand 0.10.4",
  "rand_distr 0.6.0",
  "rustfft",
  "tract-extra",
@@ -5765,7 +5765,7 @@ dependencies = [
  "num-traits",
  "pollster",
  "proptest",
- "rand 0.10.3",
+ "rand 0.10.4",
  "tract-core",
  "tract-gpu",
  "tract-pulse-opl",
@@ -5803,7 +5803,7 @@ dependencies = [
  "http",
  "httparse",
  "log",
- "rand 0.10.3",
+ "rand 0.10.4",
  "sha1",
  "thiserror 2.0.20",
 ]
@@ -6110,9 +6110,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.11"
+version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5f280bbb2b287bc8e7de7e3852945a0ff50d1bbcb5ed42b6c7a568c546df171"
+checksum = "7265c9301c16a8711c992c2d8da90ee77ef54b1ed51482d6dfeb00dc756b1297"
 dependencies = [
  "rustls-pki-types",
 ]
