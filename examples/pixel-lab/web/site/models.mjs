@@ -22,6 +22,7 @@ export const MODELS = [
     height: 256,
     mean: [0, 0, 0],
     std: [1, 1, 1],
+    f16Option: true,
   },
   {
     id: 'mediapipe-landscape',
@@ -35,6 +36,7 @@ export const MODELS = [
     height: 144,
     mean: [0, 0, 0],
     std: [1, 1, 1],
+    f16Option: true,
   },
   {
     id: 'pp-humanseg-v2',
@@ -61,6 +63,7 @@ export const MODELS = [
     height: 288,
     mean: [0.5, 0.5, 0.5],
     std: [0.5, 0.5, 0.5],
+    f16Option: true,
   },
   {
     id: 'lp-xs',
@@ -178,6 +181,16 @@ export function model(id) {
 // recurrent state, so the uncertain-mask hold is not applied to it.
 export function holdsUncertainMask(entry) {
   return entry.kind !== 'rvm';
+}
+
+// Models that may run in f16 with f16 accumulation on request, keeping an f32 camera and mask.
+export function offersF16(entry) {
+  return entry.f16Option === true;
+}
+
+// Whether the network runs in f16: always for an f16Body model, on request for an f16Option one.
+export function runsF16(entry, requested) {
+  return entry.f16Body === true || (offersF16(entry) && requested === true);
 }
 
 export function capture(id) {
