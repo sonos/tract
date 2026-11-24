@@ -257,10 +257,10 @@ pub mod test {
         crate::setup_test_logger();
         let vec_a: Vec<T> = a.iter().copied().map(|x| x.as_()).collect();
         // We allocate a tensor to ensure allocation is done with alignement
-        let mut a = unsafe { Tensor::from_slice_align(vec_a.as_slice(), vector_size()).unwrap() };
+        let mut a = Tensor::from_slice_align(vec_a.as_slice(), vector_size()).unwrap();
         let vec_b: Vec<T> = b.iter().copied().map(|x| x.as_()).collect();
         // We allocate a tensor to ensure allocation is done with alignement
-        let b = unsafe { Tensor::from_slice_align(vec_b.as_slice(), vector_size()).unwrap() };
+        let b = Tensor::from_slice_align(vec_b.as_slice(), vector_size()).unwrap();
         crate::frame::unicast::test::test_unicast::<K, _>(
             a.try_as_plain_ram_mut().unwrap().as_slice_mut::<T>().unwrap(),
             b.try_as_plain_ram().unwrap().as_slice::<T>().unwrap(),

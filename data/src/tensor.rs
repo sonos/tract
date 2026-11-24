@@ -95,49 +95,17 @@ pub struct Tensor {
     storage: StorageKind,
 }
 
-unsafe impl Send for Tensor {}
-unsafe impl Sync for Tensor {}
-
 impl Hash for Tensor {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        use DatumType::*;
         self.dt.hash(state);
         self.shape.hash(state);
-        if let Some(plain) = self.storage.as_plain_ram() {
+        if let Some(plain) = self.as_plain_ram() {
             plain.layout().align().hash(state);
-            unsafe {
-                match self.dt {
-                    Bool => self.as_slice_unchecked::<bool>().hash(state),
-                    I8 => self.as_slice_unchecked::<i8>().hash(state),
-                    I16 => self.as_slice_unchecked::<i16>().hash(state),
-                    I32 => self.as_slice_unchecked::<i32>().hash(state),
-                    I64 => self.as_slice_unchecked::<i64>().hash(state),
-                    U8 => self.as_slice_unchecked::<u8>().hash(state),
-                    U16 => self.as_slice_unchecked::<u16>().hash(state),
-                    U32 => self.as_slice_unchecked::<u32>().hash(state),
-                    U64 => self.as_slice_unchecked::<u64>().hash(state),
-                    F16 => self.as_slice_unchecked::<i16>().hash(state),
-                    F32 => self.as_slice_unchecked::<i32>().hash(state),
-                    F64 => self.as_slice_unchecked::<i64>().hash(state),
-                    TDim => self.as_slice_unchecked::<crate::dim::TDim>().hash(state),
-                    String => self.as_slice_unchecked::<std::string::String>().hash(state),
-                    Blob => self.as_slice_unchecked::<crate::blob::Blob>().hash(state),
-                    QI8(_) => self.as_slice_unchecked::<i8>().hash(state),
-                    QU8(_) => self.as_slice_unchecked::<u8>().hash(state),
-                    QI32(_) => self.as_slice_unchecked::<i32>().hash(state),
-                    #[cfg(feature = "complex")]
-                    ComplexI16 => self.as_slice_unchecked::<Complex<i16>>().hash(state),
-                    #[cfg(feature = "complex")]
-                    ComplexI32 => self.as_slice_unchecked::<Complex<i32>>().hash(state),
-                    #[cfg(feature = "complex")]
-                    ComplexI64 => self.as_slice_unchecked::<Complex<i64>>().hash(state),
-                    #[cfg(feature = "complex")]
-                    ComplexF16 => self.as_slice_unchecked::<Complex<i16>>().hash(state),
-                    #[cfg(feature = "complex")]
-                    ComplexF32 => self.as_slice_unchecked::<Complex<i32>>().hash(state),
-                    #[cfg(feature = "complex")]
-                    ComplexF64 => self.as_slice_unchecked::<Complex<i64>>().hash(state),
-                }
+            match self.dt {
+                DatumType::TDim => plain.as_slice::<TDim>().unwrap().hash(state),
+                DatumType::String => plain.as_slice::<String>().unwrap().hash(state),
+                DatumType::Blob => plain.as_slice::<Blob>().unwrap().hash(state),
+                _ => plain.as_bytes().hash(state),
             }
         } else {
             self.storage.dyn_hash(state);
@@ -846,18 +814,8 @@ impl Tensor {
         Ok(tensor)
     }
 
-    pub unsafe fn from_slice_align<T: Datum>(content: &[T], align: usize) -> TractResult<Tensor> {
-        let bytes = if content.len() == 0 {
-            &[]
-        } else {
-            unsafe {
-                std::slice::from_raw_parts(
-                    content.as_ptr() as *const u8,
-                    content.len() * T::datum_type().size_of(),
-                )
-            }
-        };
-        unsafe { Self::from_raw_dt_align(T::datum_type(), &[content.len()], bytes, align) }
+    pub fn from_slice_align<T: Datum + Copy>(content: &[T], align: usize) -> TractResult<Tensor> {
+        Self::from_shape_align(&[content.len()], content, align)
     }
 
     /// Get the number of dimensions (or axes) of the tensor.
@@ -899,7 +857,7 @@ impl Tensor {
             return;
         }
         compute_natural_stride_to(&mut self.strides, &self.shape);
-        self.len = unsafe { *self.strides.get_unchecked(0) as usize * self.shape.get_unchecked(0) };
+        self.len = self.strides[0] as usize * self.shape[0];
     }
 
     /// Force the tensor shape, no consistency check.
@@ -2301,7 +2259,7 @@ impl Tensor {
 
     #[inline]
     pub fn view(&self) -> view::TensorView<'_> {
-        unsafe { view::TensorView::view(self) }
+        view::TensorView::view(self)
     }
 
     #[inline]
@@ -2321,7 +2279,7 @@ impl Tensor {
 
     #[inline]
     pub fn view_mut(&mut self) -> view::TensorView<'_> {
-        unsafe { view::TensorView::view(self) }
+        view::TensorView::view(self)
     }
 
     #[inline]

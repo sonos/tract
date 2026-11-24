@@ -326,7 +326,7 @@ mod tests {
         while input.len() % b.block_len() != 0 {
             input.push(0f32);
         }
-        let ref_tensor = unsafe { Tensor::from_slice_align(&input, vector_size())? };
+        let ref_tensor = Tensor::from_slice_align(&input, vector_size())?;
 
         let quant = b.quant_f32(&input).unwrap();
         let result = b.dequant_f32(&quant).unwrap();
@@ -338,7 +338,7 @@ mod tests {
         while input.len() % b.block_len() != 0 {
             input.push(f16::zero());
         }
-        let ref_tensor = unsafe { Tensor::from_slice_align(&input, vector_size())? };
+        let ref_tensor = Tensor::from_slice_align(&input, vector_size())?;
 
         let quant = b.quant_f16(&input).unwrap();
         let result = b.dequant_f16(&quant).unwrap();
