@@ -278,6 +278,14 @@ pub fn wgpu_conv_dispatch(
             );
         }
         let dt = ShaderDtype::from_datum(input.datum_type())?;
+        #[cfg(not(target_arch = "wasm32"))]
+        if packed_weights.is_none()
+            && crate::kernels::coop_conv::try_dispatch(
+                q, op, epilogue, input, weights, extras, output, dt,
+            )?
+        {
+            return Ok(());
+        }
         let f16_acc = dt == ShaderDtype::F16 && f16_accumulation;
         let layout = LayoutKind::Chain(3 + extras.len() as u8);
         let in_shape = op.pool_spec.data_format.shape(input.shape())?;
@@ -2848,8 +2856,17 @@ mod tests {
     /// prepared: products overflow f16 but cancel in pairs of input channels,
     /// so f32 accumulation gives exact zeros and f16 accumulation does not. The
     /// shapes take the direct and the split-K kernels.
+    /// Runs a check of kernels the cooperative convolution would serve first.
+    fn without_subgroups(check: fn() -> TractResult<()>) -> TractResult<()> {
+        tract_data::knobs::KnobScope::new([("TRACT_WGPU_SUBGROUPS", "false")])?.enter(check)
+    }
+
     #[test]
     fn conv_f16_accumulation_follows_knob() -> TractResult<()> {
+        without_subgroups(conv_f16_accumulation_follows_knob_body)
+    }
+
+    fn conv_f16_accumulation_follows_knob_body() -> TractResult<()> {
         use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
         use tract_core::ops::nn::DataFormat;
         use tract_data::knobs::KnobScope;
@@ -3129,6 +3146,10 @@ mod tests {
     /// f16 accumulation. A 28×48 map and a wide map keep the direct kernel.
     #[test]
     fn fat_small_map_conv_routes_splitk() -> TractResult<()> {
+        without_subgroups(fat_small_map_conv_routes_splitk_body)
+    }
+
+    fn fat_small_map_conv_routes_splitk_body() -> TractResult<()> {
         use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
         use tract_core::ops::nn::DataFormat;
         use tract_data::knobs::KnobScope;

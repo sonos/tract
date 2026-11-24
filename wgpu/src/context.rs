@@ -1758,7 +1758,7 @@ impl Drop for WgpuQueue {
     }
 }
 
-/// Identifies one blocked-matmul weight packing: the buffer it was read from,
+/// Identifies one weight packing: the buffer it was read from,
 /// where in that buffer, and the shape it was written as.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RepackKey {
@@ -1766,6 +1766,16 @@ pub struct RepackKey {
     pub offset: usize,
     pub k: usize,
     pub n: usize,
+    pub layout: RepackLayout,
+}
+
+/// What a packing writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RepackLayout {
+    /// `k x n`, the second matmul operand transposed.
+    Transposed,
+    /// 3x3 convolution weights as contiguous 8x8 blocks, see `kernels::coop_conv`.
+    CoopConv3x3,
 }
 
 #[derive(Clone)]

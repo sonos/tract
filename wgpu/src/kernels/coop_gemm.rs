@@ -82,7 +82,7 @@ fn plan(m: usize, k: usize, n: usize) -> Option<Plan> {
     Some(Plan { tm, tn, step, split })
 }
 
-fn block_tile(caps: &SubgroupCaps, dt: ShaderDtype) -> Option<MatrixTile> {
+pub(crate) fn block_tile(caps: &SubgroupCaps, dt: ShaderDtype) -> Option<MatrixTile> {
     match dt {
         ShaderDtype::F32 => caps.f32_tile,
         ShaderDtype::F16 => caps.f16_mixed_tile,
