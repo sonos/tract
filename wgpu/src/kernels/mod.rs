@@ -7,6 +7,7 @@ pub mod compare_select;
 pub mod conv;
 pub mod conv_splitk;
 pub(crate) mod coop_conv;
+pub(crate) mod coop_conv_padded;
 pub(crate) mod coop_dialect;
 pub(crate) mod coop_gemm;
 pub mod copy;

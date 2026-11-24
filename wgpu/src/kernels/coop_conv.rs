@@ -26,8 +26,8 @@ use crate::kernels::shaders::{
 use crate::kernels::subgroup::{chosen_subgroup, enables, knob_on, limits_of};
 use crate::utils::{element_offset, get_wgpu_buffer};
 
-const LANES: usize = 32;
-const BLOCK: usize = 8;
+pub(crate) const LANES: usize = 32;
+pub(crate) const BLOCK: usize = 8;
 const TAPS: usize = 9;
 /// Blocks of 8x8 a subgroup accumulates at most. More spill registers.
 const ACCUMULATORS: usize = 10;
@@ -95,31 +95,32 @@ fn tile(ci: usize, co: usize, h: usize, w: usize) -> Option<Tile> {
 /// `ci - 8`; the channels it shares with the block before are halved in both, which keeps an
 /// infinite input infinite where a zero weight would make it `NaN`. Only reached for unpooled
 /// weights, so the key cannot outlive the buffer it names.
-fn packed_weights(
+pub(crate) fn packed_weights(
     q: &WgpuQueue,
     weights: &DeviceTensor,
     dt: ShaderDtype,
     ci: usize,
     co: usize,
+    taps: usize,
 ) -> TractResult<DeviceTensor> {
     let key = RepackKey {
         buffer: get_wgpu_buffer(weights).id,
         offset: element_offset(weights, 0),
         k: ci,
         n: co,
-        layout: RepackLayout::CoopConv3x3,
+        layout: RepackLayout::CoopConv { taps },
     };
     if let Some(packed) = q.repacked(&key) {
         return Ok(packed);
     }
     let in_blocks = ci.div_ceil(BLOCK);
-    let len = co * TAPS * in_blocks * BLOCK;
+    let len = co * taps * in_blocks * BLOCK;
     let packed = DeviceTensor::uninitialized_dt(weights.datum_type(), &[len])?;
     let t = dt.wgsl();
     let layout = LayoutKind::Chain(2);
     let enable = if dt == ShaderDtype::F16 { "enable f16;\n" } else { "" };
     let pipeline = q.context().chain_pipeline(
-        ("conv_coop_pack", dt, ci, co),
+        ("conv_coop_pack", dt, ci, co, taps),
         layout,
         EntryPoint::typed("conv2d_coop_pack", dt),
         || {
@@ -134,19 +135,19 @@ fn conv2d_coop_pack_{}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     if (i >= {len}u) {{ return; }}
     let lane = i % 8u;
     let o = (i / {}u) * 8u + (i / 8u) % 8u;
-    let tap = (i / 64u) % {TAPS}u;
+    let tap = (i / 64u) % {taps}u;
     let b = (i / {}u) % {in_blocks}u;
     let last = b == {}u;
     let c = select(b * 8u, {}u, last) + lane;
     let twice = c >= {}u && c < {}u;
-    let w = inp[params.x + (o * {ci}u + c) * {TAPS}u + tap];
+    let w = inp[params.x + (o * {ci}u + c) * {taps}u + tap];
     outp[i] = select(w, w * {t}(0.5), twice);
 }}
 "#,
                 dt.suffix(),
                 64 * GRID_LIMIT,
-                64 * TAPS * in_blocks,
-                64 * TAPS,
+                64 * taps * in_blocks,
+                64 * taps,
                 in_blocks - 1,
                 ci - BLOCK,
                 ci - BLOCK,
@@ -170,6 +171,70 @@ fn conv2d_coop_pack_{}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     Ok(packed)
 }
 
+/// The map as the dialect indexes it, `[channel][pixel]` in naga and flat in Dawn.
+pub(crate) fn map_type(dialect: Dialect, dt: ShaderDtype, pixels: usize) -> String {
+    match dialect {
+        Dialect::Naga => format!("array<array<{}, {pixels}>>", dt.wgsl()),
+        Dialect::Dawn => format!("array<{}>", dt.wgsl()),
+    }
+}
+
+/// The weights [`packed_weights`] writes.
+pub(crate) fn weights_type(
+    dt: ShaderDtype,
+    taps: usize,
+    in_blocks: usize,
+    channels: usize,
+) -> String {
+    let t = dt.wgsl();
+    format!("array<array<array<array<array<{t}, 64>, {taps}>, {in_blocks}>, {channels}>>")
+}
+
+/// Bindings of a cooperative convolution, and the epilogue as `epi(accumulated, channel)`.
+pub(crate) fn head(
+    dt: ShaderDtype,
+    acc: ShaderDtype,
+    epilogue: &[ChainStep],
+    extras: usize,
+    map: &str,
+    weights: &str,
+) -> String {
+    let (t, st) = (dt.wgsl(), acc.wgsl());
+    let enable = enables(dt, true, false);
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    format!(
+        r#"{enable}struct Params {{
+    off_out: u32,
+    _p0: u32,
+    _p1: u32,
+    _p2: u32,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: {map};
+@group(0) @binding(1) var<storage, read> wgt: {weights};
+{extra_bindings}@group(0) @binding({}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({}) var<uniform> params: Params;
+{}{}
+fn epi(acc: {st}, co: u32) -> {t} {{
+    var v = acc;
+{}    return {t}(v);
+}}
+
+"#,
+        2 + extras,
+        3 + extras,
+        unary_ops_wgsl(st),
+        binary_ops_wgsl(st),
+        conv_direct_epilogue(epilogue, acc != dt),
+    )
+}
+
 fn shader(
     dialect: Dialect,
     dt: ShaderDtype,
@@ -188,45 +253,19 @@ fn shader(
     let blocks: Vec<_> = (0..rows)
         .flat_map(|d| (0..channels).flat_map(move |c| (0..pixels).map(move |p| (d, c, p))))
         .collect();
-    let enable = enables(dt, true, false);
-    let input = match dialect {
-        Dialect::Naga => format!("array<array<{t}, {map}>>"),
-        Dialect::Dawn => format!("array<{t}>"),
-    };
-    let extra_bindings = (0..extras)
-        .map(|i| {
-            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
-        })
-        .collect::<String>();
-    let mut s = format!(
-        r#"{enable}struct Params {{
-    off_out: u32,
-    _p0: u32,
-    _p1: u32,
-    _p2: u32,
-    off_extra: vec4<u32>,
-    mode_extra: vec4<u32>,
-}}
-
-@group(0) @binding(0) var<storage, read> inp: {input};
-@group(0) @binding(1) var<storage, read> wgt: array<array<array<array<array<{t}, 64>, {TAPS}>, {in_blocks}>, {channels}>>;
-{extra_bindings}@group(0) @binding({}) var<storage, read_write> outp: array<{t}>;
-@group(0) @binding({}) var<uniform> params: Params;
-var<workgroup> stage: array<array<{st}, {span}>, {split}>;
-var<workgroup> edge_stage: array<array<{st}, {span}>, {split}>;
-{}{}
-fn epi(acc: {st}, co: u32) -> {t} {{
-    var v = acc;
-{}    return {t}(v);
-}}
-
-"#,
-        2 + extras,
-        3 + extras,
-        unary_ops_wgsl(st),
-        binary_ops_wgsl(st),
-        conv_direct_epilogue(epilogue, acc != dt),
+    let mut s = head(
+        dt,
+        acc,
+        epilogue,
+        extras,
+        &map_type(dialect, dt, map),
+        &weights_type(dt, TAPS, in_blocks, channels),
     );
+    writeln!(
+        s,
+        "var<workgroup> stage: array<array<{st}, {span}>, {split}>;\nvar<workgroup> edge_stage: array<array<{st}, {span}>, {split}>;"
+    )
+    .unwrap();
     let subgroup_id = if split > 1 { ", @builtin(subgroup_id) sg: u32" } else { "" };
     writeln!(
         s,
@@ -385,6 +424,67 @@ fn epi(acc: {st}, co: u32) -> {t} {{
     s
 }
 
+/// The accumulator and `[ci, co, h, w]` of a convolution with a square `kernel` that a cooperative
+/// kernel may serve: stride 1, same padding, channel-first, ungrouped, one image, constant weights.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn site(
+    q: &WgpuQueue,
+    op: &Conv,
+    kernel: usize,
+    input: &DeviceTensor,
+    weights: &DeviceTensor,
+    extras: &[&DeviceTensor],
+    output: &DeviceTensor,
+    dt: ShaderDtype,
+    f16_accumulation: bool,
+) -> Option<(ShaderDtype, [usize; 4])> {
+    let caps = *q.context().subgroup_caps();
+    let runs = knob_on(&caps)
+        && caps.matrix
+        && chosen_subgroup(&caps).is_some_and(|c| c.size as usize == LANES && !c.varying && !c.pin)
+        && op.group == 1
+        && op.kernel_fmt == KernelFormat::OIHW
+        && op.pool_spec.data_format == DataFormat::NCHW
+        && op.pool_spec.kernel_shape[..] == [kernel, kernel]
+        && op.pool_spec.strides()[..] == [1, 1]
+        && op.pool_spec.dilations()[..] == [1, 1]
+        && extras.len() <= 4;
+    let acc = accumulator(&caps, dt, f16_accumulation).filter(|_| runs)?;
+    let pads = op.pool_spec.computed_padding(&input.shape()[2..]);
+    let [ci, co] = [op.pool_spec.input_channels, op.pool_spec.output_channels];
+    let &[n, _, ih, iw] = input.shape() else { return None };
+    let &[_, _, h, w] = output.shape() else { return None };
+    let natural = |t: &DeviceTensor, shape: &[usize]| {
+        t.shape() == shape && t.strides() == &*Tensor::natural_strides(shape)
+    };
+    let plain = n == 1
+        && (ih, iw) == (h, w)
+        && pads.iter().all(|p| p.pad_before == kernel / 2)
+        && natural(input, &[1, ci, h, w])
+        && natural(output, &[1, co, h, w])
+        && natural(weights, &[co, ci, kernel, kernel])
+        && !get_wgpu_buffer(weights).pooled
+        && element_offset(input, 0) == 0;
+    plain.then_some((acc, [ci, co, h, w]))
+}
+
+/// The uniform [`head`] declares.
+pub(crate) fn uniform(
+    output: &DeviceTensor,
+    extras: &[&DeviceTensor],
+    co: usize,
+) -> TractResult<Vec<u8>> {
+    let mut vals = vec![element_offset(output, 0) as u32, 0, 0, 0];
+    let (mut offsets, mut modes) = ([0u32; 4], [0u32; 4]);
+    for (i, extra) in extras.iter().enumerate() {
+        offsets[i] = element_offset(extra, 0) as u32;
+        modes[i] = epilogue_mode(extra, co)?;
+    }
+    vals.extend_from_slice(&offsets);
+    vals.extend_from_slice(&modes);
+    Ok(pack_u32s(&vals))
+}
+
 /// Runs the convolution when the device, the op and the shape allow the kernel.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn try_dispatch(
@@ -398,54 +498,20 @@ pub(crate) fn try_dispatch(
     dt: ShaderDtype,
     f16_accumulation: bool,
 ) -> TractResult<bool> {
-    let caps = *q.context().subgroup_caps();
-    let subgroup =
-        chosen_subgroup(&caps).filter(|c| c.size as usize == LANES && !c.varying && !c.pin);
-    let runs = knob_on(&caps)
-        && caps.matrix
-        && subgroup.is_some()
-        && op.group == 1
-        && op.kernel_fmt == KernelFormat::OIHW
-        && op.pool_spec.data_format == DataFormat::NCHW
-        && op.pool_spec.kernel_shape[..] == [3, 3]
-        && op.pool_spec.strides()[..] == [1, 1]
-        && op.pool_spec.dilations()[..] == [1, 1];
-    let Some(acc) = accumulator(&caps, dt, f16_accumulation).filter(|_| runs) else {
+    let Some((acc, [ci, co, h, w])) =
+        site(q, op, 3, input, weights, extras, output, dt, f16_accumulation)
+    else {
         return Ok(false);
     };
-    let pads = op.pool_spec.computed_padding(&input.shape()[2..]);
-    let [ci, co] = [op.pool_spec.input_channels, op.pool_spec.output_channels];
-    let &[n, _, ih, iw] = input.shape() else { return Ok(false) };
-    let &[_, _, h, w] = output.shape() else { return Ok(false) };
-    let natural = |t: &DeviceTensor, shape: &[usize]| {
-        t.shape() == shape && t.strides() == &*Tensor::natural_strides(shape)
-    };
-    let plain = n == 1
-        && (ih, iw) == (h, w)
-        && pads.iter().all(|p| p.pad_before == 1)
-        && natural(input, &[1, ci, h, w])
-        && natural(output, &[1, co, h, w])
-        && natural(weights, &[co, ci, 3, 3])
-        && !get_wgpu_buffer(weights).pooled
-        && element_offset(input, 0) == 0;
-    let Some(tile) = tile(ci, co, h, w).filter(|_| plain) else { return Ok(false) };
+    let Some(tile) = tile(ci, co, h, w) else { return Ok(false) };
     let limits = q.context().device().limits();
     let (max_invocations, max_x) = limits_of(q);
     if (LANES * tile.split) as u32 > max_invocations.min(max_x)
         || tile.workgroup_bytes() as u32 > limits.max_compute_workgroup_storage_size
-        || extras.len() > 4
     {
         return Ok(false);
     }
-    let mut vals = vec![element_offset(output, 0) as u32, 0, 0, 0];
-    let (mut offsets, mut modes) = ([0u32; 4], [0u32; 4]);
-    for (i, extra) in extras.iter().enumerate() {
-        offsets[i] = element_offset(extra, 0) as u32;
-        modes[i] = epilogue_mode(extra, co)?;
-    }
-    vals.extend_from_slice(&offsets);
-    vals.extend_from_slice(&modes);
-    let packed = packed_weights(q, weights, dt, ci, co)?;
+    let packed = packed_weights(q, weights, dt, ci, co, TAPS)?;
     let layout = LayoutKind::Chain(3 + extras.len() as u8);
     let shape = [ci, co, h, w];
     let pipeline = q.context().chain_pipeline(
@@ -458,7 +524,7 @@ pub(crate) fn try_dispatch(
     buffers.extend(extras.iter().map(|t| get_wgpu_buffer(t)));
     buffers.push(get_wgpu_buffer(output));
     let bg = q.context().bind_group(layout, &buffers, q.uniform())?;
-    let dyn_off = q.alloc_uniform(&pack_u32s(&vals))?;
+    let dyn_off = q.alloc_uniform(&uniform(output, extras, co)?)?;
     let grid = tile.groups(co, h, w).map(|g| g as u32);
     q.dispatch_grid("conv_coop", &pipeline, &bg, dyn_off, grid)?;
     Ok(true)
