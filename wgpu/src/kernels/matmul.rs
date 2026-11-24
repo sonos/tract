@@ -1874,7 +1874,9 @@ mod tests {
                 .collect();
             Tensor::from_shape(shape, &values)?.into_device()
         };
-        for (k, n) in [(160, 960), (960, 160)] {
+        // The knob would let the cooperative GEMM serve these shapes first.
+        let off = tract_data::knobs::KnobScope::new([("TRACT_WGPU_SUBGROUPS", "false")])?;
+        let check = |k: usize, n: usize| -> TractResult<()> {
             let a = make(&[k, m], 1)?;
             let b = make(&[n, k], 2)?;
             let bias = make(&[n], 3)?;
@@ -1908,6 +1910,10 @@ mod tests {
             })?;
             ensure!(profile.iter().any(|(name, _)| *name == "matmul_splitk_col_fast"));
             assert_eq!(normal.to_host()?, column.to_host()?, "k={k} n={n}");
+            Ok(())
+        };
+        for (k, n) in [(160, 960), (960, 160)] {
+            off.enter(|| check(k, n))?;
         }
         Ok(())
     }
