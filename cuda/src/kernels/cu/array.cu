@@ -342,7 +342,8 @@ INSTANTIATE_DIAG_GATHER(f16, __half)
 // where the host flattens to (pre × a_size × post) for data and
 // (pre × n_indices × post) for output.  `n_indices` here is the *flat*
 // indices count (product of the indices tensor's shape).  Negative indices
-// wrap with `a_size`, matching the CPU contract.
+// wrap with `a_size`, matching the CPU contract; an index still outside
+// [0, a_size) yields 0.
 #define INSTANTIATE_GATHER(name, T)                                            \
     extern "C" __global__ void gather_##name(                                  \
         const T *data, const int64_t *indices, T *output, const int32_t pre,   \
@@ -355,10 +356,14 @@ INSTANTIATE_DIAG_GATHER(f16, __half)
         int64_t k = indices[i_n];                                              \
         if (k < 0)                                                             \
             k += a_size;                                                       \
-        const int64_t in_off =                                                 \
-            ((int64_t)i_pre * a_size + k) * post + i_post;                     \
         const int64_t out_off =                                                \
             ((int64_t)i_pre * n_indices + i_n) * post + i_post;                \
+        if (k < 0 || k >= a_size) {                                            \
+            output[out_off] = (T)0;                                            \
+            return;                                                            \
+        }                                                                      \
+        const int64_t in_off =                                                 \
+            ((int64_t)i_pre * a_size + k) * post + i_post;                     \
         output[out_off] = data[in_off];                                        \
     }
 
@@ -368,7 +373,8 @@ INSTANTIATE_GATHER(i64, int64_t)
 
 // GatherNd with f32 coordinate rows: output element i copies the element of
 // slice `row = i / inner` at `i % inner`, the slice being picked in batch
-// `row / rows` by the n coordinates of that row. Negative coordinates wrap.
+// `row / rows` by the n coordinates of that row. Negative coordinates wrap; a
+// coordinate still outside its axis, NaN included, yields 0.
 #define INSTANTIATE_GATHER_ND(name, T)                                         \
     extern "C" __global__ void gather_nd_##name(                               \
         const T *data, const float *indices, T *output, const int64_t len,     \
@@ -385,10 +391,14 @@ INSTANTIATE_GATHER(i64, int64_t)
         const int64_t row = i / inner;                                         \
         int64_t src = (row / rows) * batch_stride + i % inner;                 \
         for (int32_t k = 0; k < n; k++) {                                      \
-            int64_t c = (int64_t)indices[row * n + k];                         \
-            if (c < 0)                                                         \
-                c += dims[k];                                                  \
-            src += c * strides[k];                                             \
+            float c = truncf(indices[row * n + k]);                            \
+            if (c < 0.0f)                                                      \
+                c += (float)dims[k];                                           \
+            if (!(c >= 0.0f && c < (float)dims[k])) {                          \
+                output[i] = (T)0;                                              \
+                return;                                                        \
+            }                                                                  \
+            src += (int64_t)c * strides[k];                                    \
         }                                                                      \
         output[i] = data[src];                                                 \
     }
