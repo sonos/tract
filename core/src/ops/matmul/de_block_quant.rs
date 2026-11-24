@@ -56,6 +56,9 @@ fn block_quant_einsum_weights(
             return Ok(Some(patch));
         }
         let format = Q4_0;
+        if !a.shape()[1].is_multiple_of(format.block_len()) {
+            continue;
+        }
         let mut patch = TypedModelPatch::default();
         let weights = if a.datum_type() == f16::datum_type() {
             format.quant_f16(a.try_as_plain_ram()?.as_slice::<f16>()?)?
@@ -157,5 +160,22 @@ mod test {
     fn block_quant_weights_already_nk() -> TractResult<()> {
         // canonical orientation (k inner on W): X[m,k] @ W[n,k], k is W axis 1
         check("mk,nk->mn", &[7, 256], &[256, 256], 1)
+    }
+
+    #[test]
+    fn block_quant_leaves_partial_blocks() -> TractResult<()> {
+        // a mel filter bank: k = 201 is not whole Q4_0 blocks, so W stays plain and exact
+        let x = fill(&[7, 201], 1);
+        let w = fill(&[128, 201], 2);
+        let reference = eval(build("mk,nk->mn", &[7, 201], &w)?, &x)?;
+        let mut model = build("mk,nk->mn", &[7, 201], &w)?;
+        BlockQuantTransform.transform(&mut model)?;
+        ensure!(
+            model
+                .nodes()
+                .iter()
+                .all(|n| n.op_as::<Const>().is_none_or(|c| c.exotic_fact().is_none()))
+        );
+        eval(model, &x)?.close_enough(&reference, Approximation::Exact)
     }
 }
