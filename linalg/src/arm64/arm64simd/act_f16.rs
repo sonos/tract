@@ -204,6 +204,62 @@ fn silu_lut() -> &'static [u16; 1 << 16] {
     })
 }
 
+/// Replaces each value by its `lut` entry. Indices are loaded four to a register and results
+/// zipped into two double words, so a step of eight has ten memory operations rather than 24:
+/// the load and store units are what bound the loop.
+#[cfg(target_arch = "aarch64")]
+#[inline]
+unsafe fn lookup_f16(buf: &mut [f16], lut: &[u16; 1 << 16]) {
+    let (steps, tail) = buf.as_chunks_mut::<8>();
+    if !steps.is_empty() {
+        unsafe {
+            std::arch::asm!("
+            2:
+                ldp    {i0}, {i4}, [{p}]
+                ubfx   {i1}, {i0}, #16, #16
+                ubfx   {i2}, {i0}, #32, #16
+                lsr    {i3}, {i0}, #48
+                and    {i0}, {i0}, #0xffff
+                ubfx   {i5}, {i4}, #16, #16
+                ubfx   {i6}, {i4}, #32, #16
+                lsr    {i7}, {i4}, #48
+                and    {i4}, {i4}, #0xffff
+                ldr    h0, [{lut}, {i0}, lsl #1]
+                ldr    h1, [{lut}, {i1}, lsl #1]
+                ldr    h2, [{lut}, {i2}, lsl #1]
+                ldr    h3, [{lut}, {i3}, lsl #1]
+                ldr    h4, [{lut}, {i4}, lsl #1]
+                ldr    h5, [{lut}, {i5}, lsl #1]
+                ldr    h6, [{lut}, {i6}, lsl #1]
+                ldr    h7, [{lut}, {i7}, lsl #1]
+                zip1   v0.4h, v0.4h, v1.4h
+                zip1   v2.4h, v2.4h, v3.4h
+                zip1   v4.4h, v4.4h, v5.4h
+                zip1   v6.4h, v6.4h, v7.4h
+                zip1   v0.2s, v0.2s, v2.2s
+                zip1   v4.2s, v4.2s, v6.2s
+                stp    d0, d4, [{p}], #16
+                subs   {n}, {n}, #1
+                b.ne   2b
+            ",
+            p = inout(reg) steps.as_mut_ptr() => _,
+            n = inout(reg) steps.len() => _,
+            lut = in(reg) lut.as_ptr(),
+            i0 = out(reg) _, i1 = out(reg) _, i2 = out(reg) _, i3 = out(reg) _,
+            i4 = out(reg) _, i5 = out(reg) _, i6 = out(reg) _, i7 = out(reg) _,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            options(nostack),
+            );
+        }
+    }
+    for x in tail {
+        *x = f16::from_bits(lut[x.to_bits() as usize]);
+    }
+}
+
+bail_stub!(aarch64; unsafe fn lookup_f16(&mut [f16], &[u16; 1 << 16]));
+
 routine_ew_rust!(aarch64;
     f16,
     arm64simd_silu_f16_lut_8n,
@@ -211,8 +267,7 @@ routine_ew_rust!(aarch64;
     4,
     #[inline(never)]
     fn run(buf: &mut [f16], _params: ()) {
-        let lut = silu_lut();
-        buf.iter_mut().for_each(|x| *x = f16::from_bits(lut[x.to_bits() as usize]));
+        unsafe { lookup_f16(buf, silu_lut()) }
     },
     func(Silu)
 );
@@ -235,6 +290,20 @@ mod silu_f16_agreement {
             .position(|(a, b)| a.to_bits() != b.to_bits())
             .map(|i| (f16::from_bits(i as u16), roundtrip[i], lut[i]));
         assert_eq!(mismatch, None);
+    }
+
+    #[test]
+    fn lut_matches_the_table_on_every_length() {
+        let lut = silu_lut();
+        let all: Vec<f16> = (0..=u16::MAX).rev().step_by(977).map(f16::from_bits).collect();
+        for len in 0..=all.len() {
+            let mut got = all.clone();
+            arm64simd_silu_f16_lut_8n::run(&mut got[..len], ());
+            for (i, (got, x)) in got.iter().zip(&all).enumerate() {
+                let want = if i < len { lut[x.to_bits() as usize] } else { x.to_bits() };
+                assert_eq!(got.to_bits(), want, "at {i} of {len}");
+            }
+        }
     }
 }
 
