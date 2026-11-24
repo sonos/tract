@@ -1,0 +1,32 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# Sliding-window causal attention: each query sees itself and the 4 positions
+# before it. Pulsed, both products read a window of the past, which a GPU
+# backend can hold as a ring its GEMM turns instead of a copy.
+
+graph network(a, b, c) -> (output)
+{
+    a = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    b = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    c = tract_core_external(shape = [T, 4], datum_type = 'f32');
+
+    scores = tract_core_einsum([a, b], expr = "id,jd->ij", acc = "f32");
+
+    pos  = tract_core_range(0, tract_core_shape_of(a)[0], step = 1);
+    row  = unsqueeze(pos, axes = [1]);
+    col  = unsqueeze(pos, axes = [0]);
+    diff = row - col;
+
+    past   = ge(diff, 0);
+    recent = lt(diff, 5);
+    window = and(past, recent);
+
+    attn = tract_transformers_scaled_masked_softmax(scores, window, scale = 0.5, post_softmax_mask = false);
+
+    output = tract_core_einsum([attn, c], expr = "ij,jd->id", acc = "f32");
+}

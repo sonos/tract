@@ -4,6 +4,7 @@ pub mod mfa;
 mod mlx_gemm;
 pub mod mlx_sdpa;
 mod mpp;
+pub mod ring;
 
 pub use basic::BasicMatMul;
 pub(crate) use ggml_gemm::dispatch_router_scores;

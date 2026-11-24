@@ -44,6 +44,7 @@ const FFT_OPS: &str = include_str!("fft.metal");
 const GDN_RECURRENT: &str = include_str!("gdn_recurrent.metal");
 const MOE_OPS: &str = include_str!("moe.metal");
 const WINOGRAD: &str = include_str!("conv/winograd.metal");
+const RING_MATVEC: &str = include_str!("matmul/ring/ring_matvec.metal");
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LibraryContent<'a> {
@@ -72,6 +73,7 @@ pub enum LibraryName {
     GdnRecurrent,
     MoeOps,
     Winograd,
+    RingMatVec,
 }
 
 impl LibraryName {
@@ -96,6 +98,7 @@ impl LibraryName {
             Self::GdnRecurrent => LibraryContent::Source(GDN_RECURRENT),
             Self::MoeOps => LibraryContent::Source(MOE_OPS),
             Self::Winograd => LibraryContent::Source(WINOGRAD),
+            Self::RingMatVec => LibraryContent::Source(RING_MATVEC),
         }
     }
 }
