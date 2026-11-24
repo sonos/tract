@@ -413,11 +413,17 @@ fn wgpu_matmul_dispatch_impl(
             && k.is_multiple_of(4)
             && vec4_along_k(a, if t.a { a.rank() - 2 } else { a.rank() - 1 })
             && vec4_along_k(b, if t.b { b.rank() - 1 } else { b.rank() - 2 });
+        let gemv_kc4b = gemv_kc
+            && !gemv_kc4
+            && k.is_multiple_of(4)
+            && vec4_along_k(b, if t.b { b.rank() - 1 } else { b.rank() - 2 });
         let gemv = gemv || gemv_kc;
         let gemv_name = if gemv_small {
             "matmul_gemv_small"
         } else if gemv_kc4 {
             "matmul_gemv_kc4"
+        } else if gemv_kc4b {
+            "matmul_gemv_kc4b"
         } else if gemv_kc {
             "matmul_gemv_kc"
         } else {
@@ -438,6 +444,8 @@ fn wgpu_matmul_dispatch_impl(
                         GemvVariant::Small
                     } else if gemv_kc4 {
                         GemvVariant::LaneParallelVec4
+                    } else if gemv_kc4b {
+                        GemvVariant::LaneParallelVec4B
                     } else if gemv_kc {
                         GemvVariant::LaneParallel
                     } else {
@@ -575,6 +583,8 @@ enum GemvVariant {
     LaneParallel,
     /// As `LaneParallel`, loading four `k` steps of `a` and `b` at once.
     LaneParallelVec4,
+    /// As `LaneParallelVec4` for `b` alone, reading `a` through its strides.
+    LaneParallelVec4B,
 }
 
 /// Whether `t` reads as `vec4`s along its `k_axis`: contiguous along it, with every other
@@ -729,8 +739,17 @@ fn matmul_gemv_module_for_layout(
         format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
     };
     let epilogue = epilogue_body_at(epilogue, "col", "oe");
-    let input_t = if matches!(variant, GemvVariant::Small | GemvVariant::LaneParallelVec4) {
-        format!("vec4<{t}>")
+    let vec4_t = format!("vec4<{t}>");
+    let a_t = if matches!(variant, GemvVariant::Small | GemvVariant::LaneParallelVec4) {
+        vec4_t.clone()
+    } else {
+        t.to_string()
+    };
+    let b_t = if matches!(
+        variant,
+        GemvVariant::Small | GemvVariant::LaneParallelVec4 | GemvVariant::LaneParallelVec4B
+    ) {
+        vec4_t.clone()
     } else {
         t.to_string()
     };
@@ -740,6 +759,8 @@ fn matmul_gemv_module_for_layout(
         matmul_gemv_kc_body(t, suf, &epilogue, false)
     } else if variant == GemvVariant::LaneParallelVec4 {
         matmul_gemv_kc_body(t, suf, &epilogue, true)
+    } else if variant == GemvVariant::LaneParallelVec4B {
+        matmul_gemv_kc4b_body(t, suf, &epilogue)
     } else {
         format!(
             r#"var<workgroup> avec: array<f32, {wg}>;
@@ -828,8 +849,8 @@ struct Params {{
     mode_extra: vec4<u32>,
 }}
 
-@group(0) @binding(0) var<storage, read> a: array<{input_t}>;
-@group(0) @binding(1) var<storage, read> b: array<{input_t}>;
+@group(0) @binding(0) var<storage, read> a: array<{a_t}>;
+@group(0) @binding(1) var<storage, read> b: array<{b_t}>;
 {extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
 {lib}
@@ -847,6 +868,23 @@ struct Params {{
 /// summed across the slice in workgroup memory. When `k` is a multiple of 4 and both
 /// operands read as `vec4`s along it, each lane loads four `k` steps at a time. Accumulates
 /// in f32. Same `Params`, strides and epilogue as [`matmul_module`].
+/// [`matmul_gemv_kc_body`] with `b` read as `vec4`s along `k` and `a`, which may be
+/// strided along `k` (a transposed activation), as four scalars per step.
+fn matmul_gemv_kc4b_body(t: &str, suf: &str, epilogue: &str) -> String {
+    let walk_k = format!(
+        r#"for (var k4 = lane; k4 < params.k / 4u; k4 += {lanes}u) {{
+            let bv = vec4<f32>(b[b_base / 4u + k4]);
+            for (var r = 0u; r < params.m; r++) {{
+                let ai = a_i + r * a_m_s + k4 * 4u * a_k_s;
+                let av = vec4<f32>(f32(a[ai]), f32(a[ai + a_k_s]), f32(a[ai + 2u * a_k_s]), f32(a[ai + 3u * a_k_s]));
+                acc[r] += dot(av, bv);
+            }}
+        }}"#,
+        lanes = MATMUL_GEMV_KC_LANES
+    );
+    matmul_gemv_kc_body_walking(t, suf, epilogue, "matmul_gemv_kc4b", &walk_k)
+}
+
 fn matmul_gemv_kc_body(t: &str, suf: &str, epilogue: &str, vec4: bool) -> String {
     let entry = if vec4 { "matmul_gemv_kc4" } else { "matmul_gemv_kc" };
     let walk_k = if vec4 {
@@ -870,6 +908,16 @@ fn matmul_gemv_kc_body(t: &str, suf: &str, epilogue: &str, vec4: bool) -> String
             lanes = MATMUL_GEMV_KC_LANES
         )
     };
+    matmul_gemv_kc_body_walking(t, suf, epilogue, entry, &walk_k)
+}
+
+fn matmul_gemv_kc_body_walking(
+    t: &str,
+    suf: &str,
+    epilogue: &str,
+    entry: &str,
+    walk_k: &str,
+) -> String {
     let cols = MATMUL_GEMV_KC_COLS;
     let lanes = MATMUL_GEMV_KC_LANES;
     let max_m = MATMUL_GEMV_KC_MAX_M;
@@ -1684,7 +1732,7 @@ mod tests {
     /// Products the k-contiguous GEMV kernel takes, `b` transposed so its rows run along `k`:
     /// one to eight rows of `a`, `k` past the kernel's minimum and `k`, `n` off the lane and
     /// column counts, a prefix, `a` and `c` transposed, f16 and a bias epilogue, with `k`
-    /// a multiple of four or not, for the `vec4` and scalar loads.
+    /// a multiple of four or not, for the `vec4` and scalar loads, `a` transposed or not.
     #[test]
     fn matmul_gemv_k_contiguous_matches_cpu() -> TractResult<()> {
         use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
@@ -1702,6 +1750,10 @@ mod tests {
             (3, 4, 132, 9, false, false, false, false),
             (1, 2, 128, 21, false, false, true, false),
             (1, 4, 256, 13, false, false, false, true),
+            (1, 4, 256, 13, true, false, false, false),
+            (3, 3, 132, 9, true, false, false, false),
+            (1, 4, 128, 21, true, false, true, false),
+            (1, 4, 256, 13, true, false, false, true),
         ] {
             let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
             let a_shape = [prefix, if ta { k } else { m }, if ta { m } else { k }];
