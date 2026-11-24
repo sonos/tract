@@ -132,6 +132,20 @@ impl<'a> TensorView<'a> {
         Ok(())
     }
 
+    /// Ensures `len` bytes starting `offset` bytes into the tensor storage lie inside it.
+    fn check_bytes(&self, offset: isize, len: usize) -> TractResult<()> {
+        let size =
+            self.tensor.as_plain_ram().context("TensorView of non-plain storage")?.layout().size();
+        ensure!(
+            usize::try_from(offset)
+                .ok()
+                .and_then(|o| o.checked_add(len))
+                .is_some_and(|end| end <= size),
+            "TensorView access to {len} bytes at offset {offset} overruns {size} bytes of storage",
+        );
+        Ok(())
+    }
+
     /// Access the data as a pointer.
     #[inline]
     pub fn as_ptr<D: Datum>(&self) -> TractResult<*const D> {
@@ -160,26 +174,39 @@ impl<'a> TensorView<'a> {
     /// Access the data as a slice.
     #[inline]
     pub unsafe fn as_slice_unchecked<D: Datum>(&self) -> &'a [D] {
+        if self.len() == 0 {
+            return &[];
+        }
         unsafe { std::slice::from_raw_parts::<D>(self.as_ptr_unchecked(), self.len()) }
     }
 
     /// Access the data as a slice.
+    ///
+    /// The view's elements are taken as contiguous from its offset; errors if that range
+    /// does not lie inside the tensor storage.
     #[inline]
     pub fn as_slice<D: Datum>(&self) -> TractResult<&'a [D]> {
         self.check_dt::<D>()?;
+        self.check_bytes(self.offset_bytes, self.len() * size_of::<D>())?;
         unsafe { Ok(self.as_slice_unchecked()) }
     }
 
     /// Access the data as a mutable slice.
     #[inline]
     pub unsafe fn as_slice_mut_unchecked<D: Datum>(&mut self) -> &mut [D] {
+        if self.len() == 0 {
+            return &mut [];
+        }
         unsafe { std::slice::from_raw_parts_mut::<D>(self.as_ptr_mut_unchecked(), self.len()) }
     }
 
     /// Access the data as a mutable slice.
+    ///
+    /// Same range contract as [`Self::as_slice`].
     #[inline]
     pub fn as_slice_mut<D: Datum>(&mut self) -> TractResult<&mut [D]> {
         self.check_dt::<D>()?;
+        self.check_bytes(self.offset_bytes, self.len() * size_of::<D>())?;
         unsafe { Ok(self.as_slice_mut_unchecked()) }
     }
 
@@ -230,6 +257,8 @@ impl<'a> TensorView<'a> {
         self.check_dt::<T>()?;
         let coords = coords.as_ref();
         self.check_coords(coords)?;
+        let item = size_of::<T>();
+        self.check_bytes(self.offset_bytes + self.offset_for_coords(coords) * item as isize, item)?;
         unsafe { Ok(self.at_unchecked(coords)) }
     }
 
@@ -238,6 +267,8 @@ impl<'a> TensorView<'a> {
         self.check_dt::<T>()?;
         let coords = coords.as_ref();
         self.check_coords(coords)?;
+        let item = size_of::<T>();
+        self.check_bytes(self.offset_bytes + self.offset_for_coords(coords) * item as isize, item)?;
         unsafe { Ok(self.at_mut_unchecked(coords)) }
     }
 
@@ -270,5 +301,20 @@ mod test {
         let a_view = TensorView::at_prefix(&a, &[1]).unwrap();
         assert_eq!(a_view.shape(), &[2]);
         assert_eq!(a_view.as_slice::<i32>().unwrap(), &[3, 4]);
+    }
+
+    #[test]
+    fn offsetting_view_stays_in_storage() {
+        let a = Tensor::from_shape(&[4], &[1f32, 2., 3., 4.]).unwrap();
+        let view = TensorView::offsetting(&a, &[2]).unwrap();
+        assert!(view.as_slice::<f32>().is_err());
+        assert_eq!(*view.at::<f32>([1]).unwrap(), 4.);
+        assert!(view.at::<f32>([2]).is_err());
+    }
+
+    #[test]
+    fn empty_view_slices() {
+        let a = Tensor::from_shape::<f32>(&[0, 3], &[]).unwrap();
+        assert!(a.view().as_slice::<f32>().unwrap().is_empty());
     }
 }
