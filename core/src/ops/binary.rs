@@ -435,9 +435,8 @@ impl TypedOp for TypedBinOp {
 fn repeat_broadcast(op: BinOp, a: &mut Tensor, b: &Tensor, period: usize) -> TractResult<bool> {
     macro_rules! run {
         ($t:ty) => {{
-            let bview = b.view();
-            let bs: &[$t] = bview.as_slice::<$t>()?;
-            let mut aview = a.view_mut();
+            let bs: &[$t] = b.try_as_plain_ram()?.as_slice::<$t>()?;
+            let mut aview = a.try_as_plain_ram_mut()?;
             let av: &mut [$t] = aview.as_slice_mut::<$t>()?;
             match op {
                 BinOp::Mul => {
