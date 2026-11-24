@@ -7,24 +7,8 @@ pub fn arr4<A, const N: usize, const M: usize, const T: usize>(xs: &[[[[A; T]; M
 where
     A: Clone,
 {
-    use ndarray::*;
-    let xs = xs.to_vec();
-    let dim = Ix4(xs.len(), N, M, T);
-    let len = xs.len();
-    let cap = xs.capacity();
-    let expand_len = len * N * M * T;
-    let ptr = Box::into_raw(xs.into_boxed_slice());
-    unsafe {
-        let v = if ::std::mem::size_of::<A>() == 0 {
-            Vec::from_raw_parts(ptr as *mut A, expand_len, expand_len)
-        } else if N == 0 || M == 0 || T == 0 {
-            Vec::new()
-        } else {
-            let expand_cap = cap * N * M * T;
-            Vec::from_raw_parts(ptr as *mut A, expand_len, expand_cap)
-        };
-        ArrayBase::from_shape_vec_unchecked(dim, v)
-    }
+    let flat = xs.as_flattened().as_flattened().as_flattened().to_vec();
+    Array4::from_shape_vec((xs.len(), N, M, T), flat).unwrap()
 }
 
 pub fn tensor0<A: Datum>(x: A) -> Tensor {

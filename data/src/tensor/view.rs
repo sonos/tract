@@ -63,7 +63,7 @@ impl<'a> TensorView<'a> {
     }
 
     #[inline]
-    pub unsafe fn view(tensor: &'a Tensor) -> TensorView<'a> {
+    pub fn view(tensor: &'a Tensor) -> TensorView<'a> {
         TensorView { tensor, offset_bytes: 0, indexing: Indexing::Prefix(0) }
     }
 
@@ -189,12 +189,6 @@ impl<'a> TensorView<'a> {
     }
 
     #[inline]
-    pub unsafe fn offset_axis_unchecked(&mut self, axis: usize, pos: isize) {
-        let stride = self.strides()[axis] * self.datum_type().size_of() as isize;
-        unsafe { self.offset_bytes(stride * pos) }
-    }
-
-    #[inline]
     pub unsafe fn offset_axis(&mut self, axis: usize, pos: isize) {
         let stride = self.strides()[axis] * self.datum_type().size_of() as isize;
         unsafe { self.offset_bytes(stride * pos) }
@@ -240,23 +234,6 @@ impl<'a> TensorView<'a> {
         self.check_coords(coords)?;
         unsafe { Ok(self.at_mut_unchecked(coords)) }
     }
-
-    /*
-      pub unsafe fn reshaped(&self, shape: impl AsRef<[usize]>) -> TensorView<'a> {
-      let shape = shape.as_ref();
-      let mut strides: TVec<isize> = shape
-      .iter()
-      .rev()
-      .scan(1, |state, d| {
-      let old = *state;
-    *state = *state * d;
-    Some(old as isize)
-    })
-    .collect();
-    strides.reverse();
-    TensorView { shape: shape.into(), strides, ..*self }
-    }
-    */
 }
 
 #[cfg(test)]
