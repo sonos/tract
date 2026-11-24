@@ -718,8 +718,7 @@ mod tests {
         let c_spec = unsafe { ker.c_from_data_and_strides(4, (spatial * n) as isize, 1) };
 
         unsafe {
-            let c_view = c_backing.view_mut();
-            let c = c_spec.wrap(&c_view);
+            let c = c_spec.wrap(&mut c_backing.view_mut());
             let ops: TVec<FusedSpec> = tvec!(
                 FusedSpec::AddMatMul {
                     a: AsInputValue::Borrowed(&*pa0),
@@ -732,17 +731,15 @@ mod tests {
         }
 
         unsafe {
-            let c_view = c_backing.view_mut();
-            let c_for_unicast = c_spec.wrap(&c_view);
-            let c_for_store = c_spec.wrap(&c_view);
+            let c = c_spec.wrap(&mut c_backing.view_mut());
             let ops: TVec<FusedSpec> = tvec!(
                 FusedSpec::AddMatMul {
                     a: AsInputValue::Borrowed(&*pa1),
                     b: AsInputValue::Borrowed(&*pb1),
                     packing: 0,
                 },
-                FusedSpec::AddUnicast(c_for_unicast),
-                FusedSpec::Store(c_for_store),
+                FusedSpec::AddUnicast(c),
+                FusedSpec::Store(c),
             );
             ker.run(m, n, &ops)?;
         }

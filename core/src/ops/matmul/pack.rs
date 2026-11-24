@@ -320,46 +320,51 @@ impl OptMatMulPack {
                     LazyPackedInput::new(format, arc.clone(), offset, self.k_axis, self.mn_axis)?;
                 values.push(match lazy {
                     Some(lazy) => Box::new(lazy),
-                    None => unsafe {
-                        let view =
-                            TensorView::from_bytes(&input, offset, input.shape(), input.strides());
+                    None => {
+                        let view = TensorView::from_bytes(
+                            &input,
+                            offset as usize,
+                            input.shape(),
+                            input.strides(),
+                        )?;
                         format.prepare_one_view(&view, self.k_axis, self.mn_axis)?
-                    },
+                    }
                 });
             }
             let stores = PackedMatrixStorage::new_batched(&output_shape, values)
                 .into_tensor(input.datum_type());
             return Ok(tvec!(stores.into_tvalue()));
         }
-        unsafe {
-            let stores = if output_shape.iter().all(|d| *d == 1) {
-                let packed = packer.prepare_one_view(&input.view(), self.k_axis, self.mn_axis)?;
-                PackedMatrixStorage::new_batched(&output_shape, tvec![packed])
-                    .into_tensor(input.datum_type())
-            } else {
-                let mut bc_shape: TVec<usize> = input.shape().into();
-                bc_shape[self.k_axis] = 1;
-                bc_shape[self.mn_axis] = 1;
+        let stores = if output_shape.iter().all(|d| *d == 1) {
+            let packed = packer.prepare_one_view(&input.view(), self.k_axis, self.mn_axis)?;
+            PackedMatrixStorage::new_batched(&output_shape, tvec![packed])
+                .into_tensor(input.datum_type())
+        } else {
+            let mut bc_shape: TVec<usize> = input.shape().into();
+            bc_shape[self.k_axis] = 1;
+            bc_shape[self.mn_axis] = 1;
 
-                let mut values: TVec<Box<dyn MMMInputValue>> =
-                    TVec::with_capacity(output_shape.iter().product());
-                for coord in indices(&*bc_shape) {
-                    let offset = coord
-                        .as_array_view()
-                        .iter()
-                        .zip(input.strides())
-                        .map(|(x, s)| *x as isize * s)
-                        .sum::<isize>()
-                        * input.datum_type().size_of() as isize;
-                    let view =
-                        TensorView::from_bytes(&input, offset, input.shape(), input.strides());
-                    values.push(packer.prepare_one_view(&view, self.k_axis, self.mn_axis)?);
-                }
-                PackedMatrixStorage::new_batched(&output_shape, values)
-                    .into_tensor(input.datum_type())
-            };
-            Ok(tvec!(stores.into_tvalue()))
-        }
+            let mut values: TVec<Box<dyn MMMInputValue>> =
+                TVec::with_capacity(output_shape.iter().product());
+            for coord in indices(&*bc_shape) {
+                let offset = coord
+                    .as_array_view()
+                    .iter()
+                    .zip(input.strides())
+                    .map(|(x, s)| *x as isize * s)
+                    .sum::<isize>()
+                    * input.datum_type().size_of() as isize;
+                let view = TensorView::from_bytes(
+                    &input,
+                    offset as usize,
+                    input.shape(),
+                    input.strides(),
+                )?;
+                values.push(packer.prepare_one_view(&view, self.k_axis, self.mn_axis)?);
+            }
+            PackedMatrixStorage::new_batched(&output_shape, values).into_tensor(input.datum_type())
+        };
+        Ok(tvec!(stores.into_tvalue()))
     }
 
     /// The plain packed format `input` of this shape is packed with, if any:
@@ -398,7 +403,7 @@ impl OptMatMulPack {
         bc_shape[self.k_axis] = 1;
         bc_shape[self.mn_axis] = 1;
         for (value, coord) in storage.values_mut().iter_mut().zip(indices(&*bc_shape)) {
-            let view = TensorView::offsetting(input, coord.slice())?;
+            let view = input.view_offsetting(coord.slice())?;
             let packed = value.downcast_mut::<EagerPackedInput>().unwrap();
             format.repack_tensor_view(packed, &view, self.k_axis, self.mn_axis)?;
         }

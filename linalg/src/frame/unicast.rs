@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use tract_data::TractResult;
-use tract_data::internal::TensorView;
+use tract_data::internal::{TensorView, TensorViewMut};
 
 use crate::frame::element_wise_helper::TempBuffer;
 use crate::{BinFn, LADatum};
@@ -145,7 +145,7 @@ where
     fn nr() -> usize;
     fn run(a: &mut [T], b: &[T]);
     fn bin() -> Box<BinFn> {
-        Box::new(|a: &mut TensorView, b: &TensorView| {
+        Box::new(|a: &mut TensorViewMut, b: &TensorView| {
             let a_slice = a.as_slice_mut()?;
             let b_slice = b.as_slice()?;
             UnicastImpl::<Self, T>::new().run(a_slice, b_slice)

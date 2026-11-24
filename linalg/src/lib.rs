@@ -62,7 +62,7 @@ pub mod multithread;
 pub mod topology;
 pub use frame::weights::WeightType;
 pub use generic::{ScaleShiftAndRound, Scaler};
-use tract_data::internal::TensorView;
+use tract_data::internal::{TensorView, TensorViewMut};
 // An arch tree compiles when this build can run its kernels, and — for enumeration only —
 // when `foreign-inventory` asks for the others as well.
 #[cfg(any(target_arch = "x86_64", feature = "foreign-inventory"))]
@@ -137,7 +137,7 @@ impl BinOp {
 /// binary layouts erase to -- [`by_scalar::ByScalarKer::bin`] broadcasts a one-element right
 /// operand, [`unicast::UnicastKer::bin`] walks a right operand of the same length -- so a caller
 /// holding one needs to know neither which layout nor which kernel answered.
-pub type BinFn = dyn Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync;
+pub type BinFn = dyn Fn(&mut TensorViewMut, &TensorView) -> TractResult<()> + Send + Sync;
 use num_traits::*;
 use std::fmt::Debug;
 use std::ops::*;

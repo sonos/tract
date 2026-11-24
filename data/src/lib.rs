@@ -49,6 +49,7 @@ pub mod internal {
     pub use crate::prelude::*;
     pub use crate::tensor::Approximation;
     pub use crate::tensor::view::TensorView;
+    pub use crate::tensor::view::TensorViewMut;
     pub use crate::tensor::{clip_range_bounds, vector_size};
     pub use crate::ulp::{UlpFloat, ulp_distance};
     pub use anyhow::{Context as TractErrorContext, anyhow, bail, ensure, format_err};

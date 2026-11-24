@@ -340,7 +340,7 @@ mod tests {
             let pb = pack_b.prepare_one(&packed_b, 0, 1).unwrap();
             let mut found = tract_data::internal::Tensor::zero::<f32>(&[n, m]).unwrap();
             unsafe {
-                let c = sme_mmm_f32_32x32.c_view(Some(1), Some(0)).wrap(&found.view_mut());
+                let c = sme_mmm_f32_32x32.c_view(Some(1), Some(0)).wrap(&mut found.view_mut());
                 sme_mmm_f32_32x32
                     .run(
                         m,
@@ -412,7 +412,7 @@ mod tests {
         let bias_t = tract_data::internal::Tensor::from_shape(&[m], &bias).unwrap();
         let cap_t = tract_data::internal::tensor0(cap);
         unsafe {
-            let c = sme_mmm_f32_32x32.c_view(Some(0), Some(1)).wrap(&found.view_mut());
+            let c = sme_mmm_f32_32x32.c_view(Some(0), Some(1)).wrap(&mut found.view_mut());
             let mut ops = vec![FusedSpec::AddMatMul {
                 a: AsInputValue::Borrowed(&*pa),
                 b: AsInputValue::Borrowed(&*pb),

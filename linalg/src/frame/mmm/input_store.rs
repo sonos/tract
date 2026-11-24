@@ -184,9 +184,8 @@ pub mod view_check {
         parent.as_bytes_mut().iter_mut().enumerate().for_each(|(ix, b)| *b = (ix % 101) as u8 + 1);
         let batch = parent.slice(0, 1, 2)?.into_shape(&[k, mn])?;
         let from_tensor = format.prepare_one(&batch, 0, 1)?;
-        let offset = parent.strides()[0] * dt.size_of() as isize;
-        let view =
-            unsafe { TensorView::from_bytes(&parent, offset, parent.shape(), parent.strides()) };
+        let offset = parent.strides()[0] as usize * dt.size_of();
+        let view = TensorView::from_bytes(&parent, offset, parent.shape(), parent.strides())?;
         let from_view = format.prepare_one_view(&view, 1, 2)?;
         let bytes = |v: &dyn MMMInputValue| -> TractResult<Arc<Blob>> {
             Ok(v.downcast_ref::<EagerPackedInput>()

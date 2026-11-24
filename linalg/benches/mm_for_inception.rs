@@ -27,7 +27,7 @@ fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize))
                         b: AsInputValue::Borrowed(&*pb),
                         packing: 0,
                     },
-                    FusedSpec::Store(mmm.c_view(Some(0), Some(1)).wrap(&c.view_mut())),
+                    FusedSpec::Store(mmm.c_view(Some(0), Some(1)).wrap(&mut c.view_mut())),
                 ],
             )
         });

@@ -318,7 +318,7 @@ impl RoutedMatMul {
             let w_e = weights_t.view_at_prefix(&[eid])?;
             let b = b_format.pack_tensor_view(&w_e, 0, 1)?;
             let mut expert_output = Tensor::zero::<f32>(&[routes.len(), n_dim])?;
-            let store = unsafe { mmm.c_view(Some(0), Some(1)).wrap(&expert_output.view_mut()) };
+            let store = unsafe { mmm.c_view(Some(0), Some(1)).wrap(&mut expert_output.view_mut()) };
             let uops = tvec![
                 FusedSpec::AddMatMul {
                     a: AsInputValue::Borrowed(&a),
@@ -430,7 +430,7 @@ impl RoutedMatMul {
                 cache.a_format.clone(),
             )?;
             let mut expert_output = Tensor::zero::<f32>(&[routes.len(), cache.n_dim])?;
-            let store = unsafe { mmm.c_view(Some(0), Some(1)).wrap(&expert_output.view_mut()) };
+            let store = unsafe { mmm.c_view(Some(0), Some(1)).wrap(&mut expert_output.view_mut()) };
             let uops = tvec![
                 FusedSpec::AddMatMul {
                     a: AsInputValue::Borrowed(&a),

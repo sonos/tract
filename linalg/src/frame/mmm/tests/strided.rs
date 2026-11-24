@@ -73,7 +73,7 @@ pub fn k_major(ker: &impl MatMatMulKer<Acc = f32>, packing: usize) -> TractResul
         let pb = ker.packings()[packing].1.prepare_one(&b, 0, 1)?;
         let mut found = Tensor::zero::<f32>(&[m, n])?;
         unsafe {
-            let c = ker.c_view(Some(0), Some(1)).wrap(&found.view_mut());
+            let c = ker.c_view(Some(0), Some(1)).wrap(&mut found.view_mut());
             ker.run(
                 m,
                 n,

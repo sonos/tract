@@ -35,7 +35,7 @@ where
     T: LADatum,
 {
     fn bin() -> Box<BinFn> {
-        Box::new(|a: &mut TensorView, b: &TensorView| {
+        Box::new(|a: &mut TensorViewMut, b: &TensorView| {
             let a_slice = a.as_slice_mut()?;
             let b = b.as_slice()?[0];
             (Self::ew()).run_with_params(a_slice, b)

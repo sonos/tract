@@ -384,7 +384,7 @@ impl PackedFormat {
 
     pub unsafe fn pack<'a, 'b>(
         &self,
-        pb: impl std::borrow::BorrowMut<TensorView<'a>>,
+        pb: impl std::borrow::BorrowMut<TensorViewMut<'a>>,
         b: impl std::borrow::Borrow<TensorView<'b>>,
         k_axis: usize,
         mn_axis: usize,
@@ -472,7 +472,7 @@ impl PackedFormat {
     #[inline]
     pub unsafe fn pack_segment<'a, 'b>(
         &self,
-        mut pb: impl std::borrow::BorrowMut<TensorView<'a>>,
+        mut pb: impl std::borrow::BorrowMut<TensorViewMut<'a>>,
         b: impl std::borrow::Borrow<TensorView<'b>>,
         k_axis: usize,
         mn_axis: usize,

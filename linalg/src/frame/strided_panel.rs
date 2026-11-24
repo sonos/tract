@@ -70,9 +70,12 @@ impl StridedKMajor {
         if mn_stride == 1 && spans_allocation(&tensor, byte_offset, k, mn, k_stride) {
             Ok(Box::new(StridedPanelInput::view(*self, tensor, byte_offset, k, mn, k_stride)))
         } else {
-            let view = unsafe {
-                TensorView::from_bytes(&tensor, byte_offset, tensor.shape(), tensor.strides())
-            };
+            let view = TensorView::from_bytes(
+                &tensor,
+                usize::try_from(byte_offset)?,
+                tensor.shape(),
+                tensor.strides(),
+            )?;
             let packed = packed_format(self.r).pack_tensor_view(&view, k_axis, mn_axis)?;
             self.wrap_packed(packed)
         }

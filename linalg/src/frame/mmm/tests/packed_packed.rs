@@ -360,7 +360,7 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
 
         if self.frame_test.is_some() {
             unsafe {
-                let c = self.ker.c_view(Some(0), Some(1)).wrap(&v.view_mut());
+                let c = self.ker.c_view(Some(0), Some(1)).wrap(&mut v.view_mut());
                 let mut ops: TVec<FusedSpec> = (0..self.products)
                     .map(|_| FusedSpec::AddMatMul {
                         a: AsInputValue::Borrowed(&*pa),

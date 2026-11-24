@@ -137,7 +137,7 @@ fn numerical_consistency_16x1_vs_32x1() {
                             b: AsInputValue::Borrowed(&*pb),
                             packing: 0,
                         },
-                        FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
+                        FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&mut c.view_mut())),
                     ],
                 )
                 .unwrap();

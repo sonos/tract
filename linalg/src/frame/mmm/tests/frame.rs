@@ -99,7 +99,7 @@ where
     let mut found = Tensor::zero::<TC>(&[m, n])?;
     let c_store = unsafe {
         ker.c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
-            .wrap(&found.view_mut())
+            .wrap(&mut found.view_mut())
     };
     let mut spec: TVec<FusedSpec> = spec.into();
     spec.push(FusedSpec::Store(c_store));
@@ -248,7 +248,7 @@ where
             ker,
             m,
             n,
-            &[FusedSpec::AddUnicast(store_spec.wrap(&d.view()))],
+            &[FusedSpec::AddUnicast(store_spec.wrap_read(&d.view()))],
             |r, c| view_d[(r, c)].as_(),
         )
     }
@@ -333,7 +333,7 @@ pub fn lazy_a<K: MatMatMulKer, TA: LADatum>(ker: &K) -> TractResult<()> {
         let run = |pa: &dyn MMMInputValue| -> TractResult<Tensor> {
             let mut c = Tensor::zero_dt(TA::datum_type(), &[m, n])?;
             unsafe {
-                let store = ker.c_view(Some(0), Some(1)).wrap(&c.view_mut());
+                let store = ker.c_view(Some(0), Some(1)).wrap(&mut c.view_mut());
                 ker.run(
                     m,
                     n,
