@@ -1772,8 +1772,8 @@ pub struct RepackKey {
 pub enum RepackLayout {
     /// `k x n`, the second matmul operand transposed.
     Transposed,
-    /// 3x3 convolution weights as contiguous 8x8 blocks, see `kernels::coop_conv`.
-    CoopConv3x3,
+    /// Convolution weights as contiguous 8x8 blocks, see `kernels::coop_conv`.
+    CoopConv { taps: usize },
 }
 
 #[derive(Clone)]

@@ -466,6 +466,21 @@ pub fn wgpu_conv_dispatch(
         let tiled_grid =
             [pixels.div_ceil(MATMUL_TILE) as u32, co_pg.div_ceil(tile_m) as u32, groups as u32];
         if tiled
+            && crate::kernels::coop_conv_padded::try_dispatch(
+                q,
+                op,
+                epilogue,
+                input,
+                weights,
+                extras,
+                output,
+                dt,
+                f16_accumulation,
+            )?
+        {
+            return Ok(());
+        }
+        if tiled
             && let Some(slices) =
                 conv_splitk::slices(dt, groups, co_pg, pixels, ci_pg * kh * kw, tile_m)
         {
