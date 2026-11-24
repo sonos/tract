@@ -397,8 +397,9 @@ pub fn wgpu_bq_dispatch(
             }
         };
         let a_off = u32_of(element_offset(a, 0))?;
+        // A single row has no stride to align.
         let tiled = a_stride_k == 1
-            && a_stride_m.is_multiple_of(4)
+            && (m == 1 || a_stride_m.is_multiple_of(4))
             && a_off.is_multiple_of(4)
             && a_prefix.is_multiple_of(4);
         let gemv =
@@ -960,6 +961,29 @@ mod tests {
                 .with_context(|| format!("{format:?} m={m} k={k} n={n} {dt:?} bias={bias}"))?;
         }
         run_packed(&Q4_0, &[2, 1, 256], &[1, 19, 256], f32::datum_type(), false, false, false)
+    }
+
+    /// A single activation row held transposed, `[k, 1]`: its unit axis carries a stride of
+    /// one, which says nothing about the row.
+    #[test]
+    fn gemv_single_transposed_row() -> TractResult<()> {
+        for (format, k, n, f16_) in [
+            (&Q4_0 as &dyn BlockQuant, 2048usize, 40usize, false),
+            (&Q4_0, 288, 13, true),
+            (&Q2_0_T, 1152, 11, false),
+        ] {
+            let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
+            crate::set_dispatch_capture(true);
+            let _ = crate::take_dispatch_labels();
+            run_packed(format, &[k, 1], &[n, k], dt, true, false, false)
+                .with_context(|| format!("{format:?} k={k} n={n} {dt:?}"))?;
+            let labels = crate::take_dispatch_labels();
+            ensure!(
+                labels.contains(&"matmul_bq_gemv"),
+                "{format:?} k={k} n={n} {dt:?}: ran {labels:?}"
+            );
+        }
+        Ok(())
     }
 
     #[test]
