@@ -130,7 +130,7 @@ fn packed_weights(
 
 @compute @workgroup_size(64)
 fn conv2d_coop_pack_{}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {}u + gid.x;
     if (i >= {len}u) {{ return; }}
     let lane = i % 8u;
     let o = (i / {}u) * 8u + (i / 8u) % 8u;
@@ -144,6 +144,7 @@ fn conv2d_coop_pack_{}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 }}
 "#,
                 dt.suffix(),
+                64 * GRID_LIMIT,
                 64 * TAPS * in_blocks,
                 64 * TAPS,
                 in_blocks - 1,
@@ -153,7 +154,7 @@ fn conv2d_coop_pack_{}(@builtin(global_invocation_id) gid: vec3<u32>) {{
             )
         },
     )?;
-    ensure!(len.div_ceil(64) <= GRID_LIMIT as usize, "weights too large for one repack dispatch");
+    let groups = len.div_ceil(64) as u32;
     let bg = q.context().bind_group(
         layout,
         &[get_wgpu_buffer(weights), get_wgpu_buffer(&packed)],
@@ -163,7 +164,8 @@ fn conv2d_coop_pack_{}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let dyn_off = q.alloc_uniform(&pack_u32s(&[offset, 0, 0, 0]))?;
     q.retain_tensor(weights);
     q.retain_tensor(&packed);
-    q.dispatch_grid("conv_coop_pack", &pipeline, &bg, dyn_off, [len.div_ceil(64) as u32, 1, 1])?;
+    let grid = [groups.min(GRID_LIMIT), groups.div_ceil(GRID_LIMIT), 1];
+    q.dispatch_grid("conv_coop_pack", &pipeline, &bg, dyn_off, grid)?;
     q.store_repacked(key, packed.clone());
     Ok(packed)
 }
@@ -555,6 +557,25 @@ mod tests {
         )?;
         let got = pollster::block_on(crate::to_host_async(&output))?;
         Ok(got.to_plain_array_view::<f32>()?.iter().copied().collect())
+    }
+
+    /// Weights whose repack needs more workgroups than one grid dimension holds.
+    #[test]
+    fn large_weights_are_packed() -> TractResult<()> {
+        use tract_gpu::tensor::IntoDevice;
+        if !engages() {
+            return Ok(());
+        }
+        let shape @ [ci, co, h, w] = [1024, 512, 8, 16];
+        ensure!(co * ci * TAPS > 64 * GRID_LIMIT as usize);
+        let weights = (0..co * ci * TAPS).map(|i| (i / (ci * TAPS) % 7) as f32).collect::<Vec<_>>();
+        let weights = Tensor::from_shape(&[co, ci, 3, 3], &weights)?.into_device()?;
+        let got = run(&vec![1f32; ci * h * w], &weights, shape)?;
+        for o in 0..co {
+            let (have, want) = (got[(o * h + 2) * w + 4], ((o % 7) * TAPS * ci) as f32);
+            ensure!(have == want, "channel {o}: {have} instead of {want}");
+        }
+        Ok(())
     }
 
     fn engages() -> bool {
