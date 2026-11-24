@@ -12,6 +12,7 @@ use tract_num_traits::Zero;
 
 use crate::internal::*;
 use ndarray::prelude::*;
+use tract_data::half::slice::HalfFloatSliceExt;
 use tract_linalg::routines::Func;
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Default)]
@@ -177,6 +178,26 @@ impl Softmax {
                         }
                         Ok(())
                     })?;
+                } else if kind == SoftmaxKind::Softmax {
+                    // Each f16 row widens to f32 and takes the f32 kernels: exponentials and
+                    // their sum in f32, rounded to f16 once at the end.
+                    let data = output_plain.as_slice_mut::<f16>()?;
+                    let total = data.len();
+                    let rows_kernel = tract_linalg::routines::softmax_rows_f32()
+                        .filter(|_| row_len.is_multiple_of(4));
+                    let kernels = F32Kernels::new()?;
+                    tract_linalg::multithread::par_chunks_mut(data, row_len, total, |_, chunk| {
+                        let mut wide = vec![0f32; row_len];
+                        for row in chunk.chunks_mut(row_len) {
+                            row.convert_to_f32_slice(&mut wide);
+                            match rows_kernel {
+                                Some(rows_kernel) => rows_kernel(&mut wide, row_len),
+                                None => softmax_inner_slice_f32(&mut wide, kind, &kernels)?,
+                            }
+                            row.convert_from_f32_slice(&wide);
+                        }
+                        Ok(())
+                    })?;
                 } else {
                     let data = output_plain.as_slice_mut::<f16>()?;
                     let total = data.len();
@@ -275,11 +296,9 @@ impl Softmax {
         let max = Func::ReduceMax.reduce_f16()?.run(slice)?;
         match kind {
             SoftmaxKind::Softmax => {
-                // f16 softmax runs the scalar libm exp and accumulates the sum
-                // in f32: a row long enough for the running sum to outgrow its
-                // own terms stalls in f16, costing double digits of relative
-                // error by a few thousand elements. A vectorized f16 exp is not
-                // worth its fragility, f16 softmax always lands here.
+                // The sum accumulates in f32: a row long enough for the running
+                // sum to outgrow its own terms stalls in f16, costing double
+                // digits of relative error by a few thousand elements.
                 let mut sum = 0f32;
                 slice.iter_mut().for_each(|x| {
                     *x = (*x - max).exp();
@@ -822,6 +841,57 @@ mod f16_accumulator {
                 let want = e / total;
                 let err = (h.to_f32() - want).abs() / want.max(f32::MIN_POSITIVE);
                 assert!(err < 0.05, "len {len} lane {i}: got {h}, want {want}, rel {err}");
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod f16_rows {
+    use super::*;
+
+    fn softmax(t: &Tensor) -> TractResult<Tensor> {
+        let op = Softmax::new(tvec![t.rank() - 1], None, SoftmaxKind::Softmax);
+        let mut out = op.eval(&EvalContext::out_of_plan(), tvec!(t.clone().into_tvalue()))?;
+        Ok(out.remove(0).into_tensor())
+    }
+
+    /// Trailing-axis f16 rows run widened to f32: they must match the f32 op, masked lanes
+    /// included, for row lengths on and off the four-lane rows kernel.
+    #[test]
+    fn f16_rows_match_f32() -> TractResult<()> {
+        let pool = tract_linalg::multithread::Executor::multithread(4);
+        for (rows, len) in [(3usize, 4usize), (5, 7), (64, 400), (4, 1600), (2, 4099)] {
+            let values: Vec<f32> =
+                (0..rows * len)
+                    .map(|i| {
+                        if i % 13 == 5 {
+                            f32::NEG_INFINITY
+                        } else {
+                            ((i as f32) * 0.37).sin() * 6.0
+                        }
+                    })
+                    .collect();
+            let f16_in = Tensor::from_shape(&[rows, len], &values)?.cast_to::<f16>()?.into_owned();
+            let want = softmax(&f16_in.cast_to::<f32>()?.into_owned())?;
+            for threaded in [false, true] {
+                let got = if threaded {
+                    tract_linalg::multithread::multithread_tract_scope(pool.clone(), || {
+                        softmax(&f16_in)
+                    })?
+                } else {
+                    softmax(&f16_in)?
+                };
+                let got = got.cast_to::<f32>()?;
+                let (got, want) =
+                    (got.to_plain_array_view::<f32>()?, want.to_plain_array_view::<f32>()?);
+                for (i, (g, w)) in got.iter().zip(want.iter()).enumerate() {
+                    assert!(
+                        (g - w).abs() <= w.abs() * 1e-3 + 1e-6,
+                        "rows {rows} len {len} threaded {threaded} at {i}: got {g}, want {w}"
+                    );
+                }
             }
         }
         Ok(())
