@@ -225,6 +225,30 @@ unsafe impl Send for LazyIm2colInput {}
 unsafe impl Sync for LazyIm2colInput {}
 
 impl LazyIm2colInput {
+    /// Whether the points of `n_range` are read from consecutive elements of the input.
+    fn is_run<T>(&self, n_range: &Range<isize>) -> bool {
+        let offsets = &self.im2col.n_byte_offsets[n_range.start as usize..n_range.end as usize];
+        offsets.windows(2).all(|pair| pair[1] - pair[0] == size_of::<T>() as isize)
+    }
+
+    /// The gather of `R` consecutive elements, one vector load per row.
+    fn input_run<T: Datum + Copy, const R: usize>(
+        &self,
+        writer: &mut impl PackingWriter<T>,
+        k_range: Range<isize>,
+        n: isize,
+    ) {
+        unsafe {
+            let ptr = self.tensor.as_ptr_unchecked::<u8>().offset(self.group_offset_bytes);
+            let ptr = ptr.wrapping_offset(self.im2col.n_byte_offsets[n as usize]);
+            let k_range = k_range.start as usize..k_range.end as usize;
+            for k_offset in &self.im2col.k_byte_offsets[k_range] {
+                let row = ptr.wrapping_offset(*k_offset) as *const [T; R];
+                writer.write_slice(&row.read_unaligned());
+            }
+        }
+    }
+
     fn input_8n<T: Datum + Copy>(
         &self,
         writer: &mut impl PackingWriter<T>,
@@ -365,6 +389,15 @@ impl LazyIm2colInput {
             let points = n_range.start as usize..n_range.end as usize;
             if point_tap_masks(&self.im2col.axis_tap_masks, self.im2col.taps, points, masks) {
                 return self.input_checked(writer, k_range, n_range, masks);
+            }
+        }
+        if self.is_run::<T>(&n_range) {
+            match n_range.len() {
+                4 => return self.input_run::<T, 4>(writer, k_range, n_range.start),
+                6 => return self.input_run::<T, 6>(writer, k_range, n_range.start),
+                8 => return self.input_run::<T, 8>(writer, k_range, n_range.start),
+                16 => return self.input_run::<T, 16>(writer, k_range, n_range.start),
+                _ => (),
             }
         }
         match n_range.len() {
