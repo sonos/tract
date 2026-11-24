@@ -3436,6 +3436,13 @@ mod tests {
     }
 
     #[test]
+    fn late_storage_reads_through_a_view() {
+        let t = late_tensor(&[2, 3], &[1f32, 2., 3., 4., 5., 6.]);
+        let row = t.view_at_prefix(&[1]).unwrap();
+        assert_eq!(row.as_slice::<f32>().unwrap(), &[4f32, 5., 6.]);
+    }
+
+    #[test]
     fn late_storage_is_plain_but_not_in_ram_until_asked() {
         let t = late_tensor(&[2, 3], &[1f32, 2., 3., 4., 5., 6.]);
         assert!(t.is_plain());
