@@ -2,6 +2,7 @@ const stamp = new URL(import.meta.url).searchParams.get('stamp') || Date.now();
 const stamped = file => import(`./${file}?stamp=${stamp}`);
 const {CAPTURES, model, capture, rvmNetworkSize, formatR, modelsFor, holdsUncertainMask, offersF16, sharesDeviceByDefault} = await stamped('models.mjs');
 const {GpuClient} = await stamped('gpu-client.js');
+const {cooperativeSupport} = await stamped('cooperative.mjs');
 const {FrameRate} = await stamped('frame-rate.mjs');
 const {emptyPump, rememberFrame, startSend, finishSend} = await stamped('frame-pump.mjs');
 const {inspectorView, textureBytes} = await stamped('inspector.mjs');
@@ -207,13 +208,14 @@ $('hold').onchange = () => {
   state.client.request('hold', {enabled: $('hold').checked}).catch(error => status(error.message));
 };
 
-const LOAD_CONTROLS = ['model', 'camera', 'capture', 'f16', 'shared-device'];
+const LOAD_CONTROLS = ['model', 'camera', 'capture', 'f16', 'cooperative', 'shared-device'];
 
 function liveStatus(ratio, ops) {
   const scale = ratio !== undefined && ratio !== null ? ` (R=${formatR(Number(ratio))})` : '';
   const precision = state.f16 ? ', f16' : '';
   const devices = state.sharedDevice ? 'one GPU device' : 'two GPU devices';
-  status(`Live: ${state.modelName}, ${state.modelNote}${scale}${precision}, ${ops} GPU ops, ${devices}.`);
+  const matrices = state.cooperative ? ', cooperative matrices' : '';
+  status(`Live: ${state.modelName}, ${state.modelNote}${scale}${precision}${matrices}, ${ops} GPU ops, ${devices}.`);
 }
 
 // Keep the chosen model when it still matches. Otherwise use RVM, which fits every shape.
@@ -245,6 +247,15 @@ function showGpuOptions() {
   $('shared-device').checked = sharesDeviceByDefault(model($('model').value));
 }
 
+// On where the browser has the matrices, greyed out elsewhere.
+async function showCooperative() {
+  const adapter = await navigator.gpu?.requestAdapter({powerPreference: 'high-performance'}).catch(() => null);
+  state.cooperativeSupported = cooperativeSupport(adapter);
+  $('cooperative').checked = state.cooperativeSupported;
+  $('cooperative').disabled = !state.cooperativeSupported || state.running || state.starting;
+  $('cooperative-label').classList.toggle('disabled', !state.cooperativeSupported);
+}
+
 // The factor for this capture size. The long side of the inner frame stays at 512.
 function showScale() {
   const rvm = model($('model').value).kind === 'rvm';
@@ -265,6 +276,7 @@ $('f16').onchange = () => state.running && (stop(), start());
 $('shared-device').onchange = () => state.running && (stop(), start());
 $('capture').onchange = showModels;
 showModels();
+await showCooperative();
 
 function applyLayout() {
   $('tiles').classList.toggle('output', $('layout').value === 'output');
@@ -332,7 +344,7 @@ function stop(message = 'Camera stopped.') {
   state.captureWidth = state.captureHeight = 0;
   state.motionAllocated = false;
   showInspector();
-  for (const id of LOAD_CONTROLS) $(id).disabled = false;
+  for (const id of LOAD_CONTROLS) $(id).disabled = id === 'cooperative' && !state.cooperativeSupported;
   status(message);
   idle();
 }
@@ -433,9 +445,11 @@ async function start() {
     });
     const f16 = offersF16(m) && $('f16').checked;
     const sharedDevice = $('shared-device').checked;
-    const prepared = await state.client.request('init', {canvas, model: m.id, ratio: 'auto', f16, sharedDevice}, [canvas], 180000);
+    const cooperative = $('cooperative').checked;
+    const prepared = await state.client.request('init', {canvas, model: m.id, ratio: 'auto', f16, cooperative, sharedDevice}, [canvas], 180000);
     state.f16 = prepared.f16;
     state.sharedDevice = prepared.sharedDevice;
+    state.cooperative = prepared.cooperative;
     if (generation !== state.generation) return;
     await applyBackground();
     bar(1);

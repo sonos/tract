@@ -1482,9 +1482,21 @@ pub fn try_dispatch(
     if prefix == 0 || n == 0 || k == 0 {
         return Ok(false);
     }
-    #[cfg(not(target_arch = "wasm32"))]
     if crate::kernels::coop_gemm::try_dispatch(
-        q, t, epilogue, a, b, extras, output, dt, m, k, n, prefix, out_shape,
+        q,
+        t,
+        epilogue,
+        a,
+        b,
+        extras,
+        output,
+        dt,
+        f16_accumulation,
+        m,
+        k,
+        n,
+        prefix,
+        out_shape,
     )? {
         return Ok(true);
     }

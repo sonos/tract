@@ -4,10 +4,19 @@ use std::cell::{Cell, RefCell};
 
 use tract::prelude::*;
 use tract_core::knobs::KnobScope;
+use tract_core::knobs::set_config_global;
 use wasm_bindgen::prelude::*;
 
 fn js_error(error: anyhow::Error) -> JsValue {
     JsValue::from_str(&format!("{error:#}"))
+}
+
+/// Lets tract use the GPU's matrix units, where the browser has them. Call it before the first
+/// [`Segmenter`] is created: the GPU device is asked for them once.
+#[wasm_bindgen]
+pub fn use_cooperative_matrices() -> Result<(), JsValue> {
+    set_config_global("TRACT_WGPU_SUBGROUPS", "true")
+        .map_err(|error| JsValue::from_str(&format!("{error:#}")))
 }
 
 /// A person segmenter whose mask stays on the GPU for the page's compositor.

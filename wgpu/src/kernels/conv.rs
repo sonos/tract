@@ -278,10 +278,17 @@ pub fn wgpu_conv_dispatch(
             );
         }
         let dt = ShaderDtype::from_datum(input.datum_type())?;
-        #[cfg(not(target_arch = "wasm32"))]
         if packed_weights.is_none()
             && crate::kernels::coop_conv::try_dispatch(
-                q, op, epilogue, input, weights, extras, output, dt,
+                q,
+                op,
+                epilogue,
+                input,
+                weights,
+                extras,
+                output,
+                dt,
+                f16_accumulation,
             )?
         {
             return Ok(());
