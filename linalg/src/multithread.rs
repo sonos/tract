@@ -125,9 +125,9 @@ pub fn set_threading_panel_threshold(panels: usize) {
 /// Multiply-accumulate count at or above which the rayon MMM dispatcher
 /// threads a matrix-vector product even when it has fewer panels than
 /// [`current_threading_panel_threshold`]: a long-`k` GEMV over few panels
-/// carries enough work per panel to amortise the dispatch. It only ever adds
-/// threading on top of the panel gate, and leaves matrix-matrix products to
-/// the panel gate alone.
+/// carries enough work per panel to amortise the dispatch. A matrix-matrix
+/// product needs four times the count. It only ever adds threading on top of
+/// the panel gate.
 ///
 /// Default `2^21` on native targets; `usize::MAX` (off) on wasm, where the
 /// per-dispatch cost is an order of magnitude higher.

@@ -677,7 +677,7 @@ unsafe fn run_with_scratch_space_2d<K: MatMatMulKer>(
                 ker.nr(),
                 k,
                 K::Acc::datum_type().size_of(),
-                0,
+                matmat_gate_macs(m, n, k),
                 chunk,
             ),
             #[cfg(feature = "multithread-mm")]
@@ -689,7 +689,7 @@ unsafe fn run_with_scratch_space_2d<K: MatMatMulKer>(
                 ker.nr(),
                 k,
                 K::Acc::datum_type().size_of(),
-                0,
+                matmat_gate_macs(m, n, k),
                 chunk,
             ),
         }
@@ -858,9 +858,23 @@ fn chunk_grid(
     (n_panels_m.div_ceil(dr_m), n_panels_n.div_ceil(dr_n), dr_m, dr_n)
 }
 
+/// Multiply-accumulates of a matrix-matrix product that weigh as much as one of a
+/// matrix-vector product against
+/// [`crate::multithread::current_threading_mac_threshold`]. Matrix-matrix tiles run
+/// faster, on matrix units far faster, so the same count is a shorter run.
+#[cfg(feature = "multithread-mm")]
+const MATMAT_GATE_RATIO: usize = 4;
+
+/// The work an `m × n` product over `k` presents to the MAC gate.
+#[cfg(feature = "multithread-mm")]
+fn matmat_gate_macs(m: usize, n: usize, k: usize) -> usize {
+    m.saturating_mul(n).saturating_mul(k) / MATMAT_GATE_RATIO
+}
+
 /// Dispatch the `m_panels × n_panels` panel grid across the rayon path, split into
-/// the 2D chunk grid [`chunk_grid`] picks. Grids below
-/// [`crate::multithread::current_threading_panel_threshold`] run whole on the
+/// the 2D chunk grid [`chunk_grid`] picks. Grids below both
+/// [`crate::multithread::current_threading_panel_threshold`] panels and
+/// [`crate::multithread::current_threading_mac_threshold`] `macs` run whole on the
 /// calling thread instead.
 ///
 /// The closure receives **chunk bounds** (`ia_start, ia_end, ib_start, ib_end`)
@@ -1206,6 +1220,32 @@ mod blocked_walk_tests {
         };
         assert_eq!(work_items(64), 1);
         assert!(work_items(2048) > 1);
+    }
+
+    /// A matrix-matrix product under the panel gate threads only once it is heavy
+    /// enough for the matrix side of the MAC threshold. 1x50 panels of a 16x8 kernel
+    /// is a 16-channel convolution of a 20x20 image.
+    #[cfg(all(feature = "multithread-mm", not(target_family = "wasm")))]
+    #[test]
+    fn heavy_matmat_threads_below_the_panel_gate() {
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::atomic::Ordering;
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap();
+        let work_items = |k: usize| {
+            let calls = AtomicUsize::new(0);
+            let macs = matmat_gate_macs(16, 400, k);
+            unsafe {
+                chunked_dispatch_rayon(Some(&pool), 1, 50, 16, 8, k, 2, macs, |_, _, _, _, _| {
+                    calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                })
+            }
+            .unwrap();
+            calls.into_inner()
+        };
+        assert_eq!(work_items(144), 1);
+        assert_eq!(work_items(1024), 1);
+        assert!(work_items(2304) > 1);
     }
 
     /// The gate is a property of the problem, not only of the machine. On a part
