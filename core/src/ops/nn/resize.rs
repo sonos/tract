@@ -520,9 +520,12 @@ impl EvalOp for NearestUpsample {
         ensure!(input.rank() == self.scales.len());
         let out_shape: TVec<usize> =
             input.shape().iter().zip(self.scales.iter()).map(|(d, s)| d * s).collect();
-        if input.datum_type() == f32::datum_type()
-            && let Some(out) = nearest_hw_f32(&input, &self.scales, &out_shape)?
-        {
+        let fast = match input.datum_type() {
+            DatumType::F32 => nearest_hw::<f32>(&input, &self.scales, &out_shape, double_row_f32)?,
+            DatumType::F16 => nearest_hw::<f16>(&input, &self.scales, &out_shape, double_row_f16)?,
+            _ => None,
+        };
+        if let Some(out) = fast {
             return Ok(tvec!(out.into_tvalue()));
         }
         dispatch_copy!(nearest_generic(input.datum_type())(&input, &self.scales, &out_shape))
@@ -540,12 +543,17 @@ impl TypedOp for NearestUpsample {
     as_op!();
 }
 
-fn nearest_hw_f32(
+/// Writes a prefix of `w` pixels of `src` twice each to `dst`, returning its
+/// length; the caller writes the rest.
+type DoubleRow<T> = unsafe fn(src: *const T, dst: *mut T, w: usize) -> usize;
+
+fn nearest_hw<T: Datum + Copy>(
     input: &Tensor,
     scales: &[usize],
     out_shape: &[usize],
+    double_row: DoubleRow<T>,
 ) -> TractResult<Option<Tensor>> {
-    if scales.len() < 2 {
+    if scales.len() < 2 || input.len() == 0 {
         return Ok(None);
     }
     if scales[..scales.len() - 2].iter().any(|&s| s != 1) {
@@ -562,10 +570,10 @@ fn nearest_hw_f32(
     let h = input.shape()[input.rank() - 2];
     let w = input.shape()[input.rank() - 1];
     let planes = input.len() / (h * w);
-    let mut output = unsafe { Tensor::uninitialized::<f32>(out_shape)? };
+    let mut output = unsafe { Tensor::uninitialized::<T>(out_shape)? };
     unsafe {
-        let ip = input.as_ptr::<f32>()?;
-        let op = output.as_ptr_mut::<f32>()?;
+        let ip = input.as_ptr::<T>()?;
+        let op = output.as_ptr_mut::<T>()?;
         let ow = w * sw;
         for p in 0..planes {
             let src = ip.add(p * h * w);
@@ -573,7 +581,7 @@ fn nearest_hw_f32(
             for y in 0..h {
                 let srow = src.add(y * w);
                 let drow = dst.add(y * sh * ow);
-                expand_row_f32(srow, drow, w, sw);
+                expand_row(srow, drow, w, sw, double_row);
                 for ry in 1..sh {
                     std::ptr::copy_nonoverlapping(drow, drow.add(ry * ow), ow);
                 }
@@ -583,24 +591,19 @@ fn nearest_hw_f32(
     Ok(Some(output))
 }
 
-unsafe fn expand_row_f32(src: *const f32, dst: *mut f32, w: usize, sw: usize) {
+unsafe fn expand_row<T: Copy>(
+    src: *const T,
+    dst: *mut T,
+    w: usize,
+    sw: usize,
+    double_row: DoubleRow<T>,
+) {
     unsafe {
         if sw == 2 {
-            let mut x = 0usize;
-            #[cfg(target_arch = "aarch64")]
-            {
-                use std::arch::aarch64::*;
-                while x + 4 <= w {
-                    let v = vld1q_f32(src.add(x));
-                    vst2q_f32(dst.add(2 * x), float32x4x2_t(v, v));
-                    x += 4;
-                }
-            }
-            while x < w {
+            for x in double_row(src, dst, w)..w {
                 let v = *src.add(x);
                 *dst.add(2 * x) = v;
                 *dst.add(2 * x + 1) = v;
-                x += 1;
             }
             return;
         }
@@ -611,6 +614,44 @@ unsafe fn expand_row_f32(src: *const f32, dst: *mut f32, w: usize, sw: usize) {
             }
         }
     }
+}
+
+#[cfg(target_arch = "aarch64")]
+unsafe fn double_row_f32(src: *const f32, dst: *mut f32, w: usize) -> usize {
+    use std::arch::aarch64::*;
+    let mut x = 0;
+    unsafe {
+        while x + 4 <= w {
+            let v = vld1q_f32(src.add(x));
+            vst2q_f32(dst.add(2 * x), float32x4x2_t(v, v));
+            x += 4;
+        }
+    }
+    x
+}
+
+#[cfg(target_arch = "aarch64")]
+unsafe fn double_row_f16(src: *const f16, dst: *mut f16, w: usize) -> usize {
+    use std::arch::aarch64::*;
+    let mut x = 0;
+    unsafe {
+        while x + 8 <= w {
+            let v = vld1q_u16(src.add(x) as *const u16);
+            vst2q_u16(dst.add(2 * x) as *mut u16, uint16x8x2_t(v, v));
+            x += 8;
+        }
+    }
+    x
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+unsafe fn double_row_f32(_src: *const f32, _dst: *mut f32, _w: usize) -> usize {
+    0
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+unsafe fn double_row_f16(_src: *const f16, _dst: *mut f16, _w: usize) -> usize {
+    0
 }
 
 fn nearest_generic<T: Datum + Copy>(
@@ -803,6 +844,37 @@ mod tests {
         for ((a, b, c), x) in v.indexed_iter().map(|(ix, x)| ((ix[0], ix[1], ix[2]), *x)) {
             assert_eq!(x, ((a / 3) * 12 + b * 4 + c / 2) as i32);
         }
+    }
+
+    fn check_nearest_hw<T: Datum + Copy>(value: impl Fn(usize) -> T) {
+        for w in [0usize, 1, 3, 4, 7, 8, 9, 17] {
+            for (sh, sw) in [(1, 2), (2, 1), (2, 2), (3, 2), (2, 3)] {
+                let shape = [1usize, 2, 3, w];
+                let data: Vec<T> = (0..6 * w).map(&value).collect();
+                let input = Tensor::from_shape(&shape, &data).unwrap();
+                let op = NearestUpsample { scales: tvec![1, 1, sh, sw] };
+                let out = op
+                    .eval(&EvalContext::out_of_plan(), tvec!(input.into_tvalue()))
+                    .unwrap()
+                    .remove(0);
+                let v = out.to_plain_array_view::<T>().unwrap();
+                assert_eq!(v.shape(), &[1, 2, 3 * sh, w * sw]);
+                for (ix, x) in v.indexed_iter() {
+                    let expected = data[(ix[1] * 3 + ix[2] / sh) * w + ix[3] / sw];
+                    assert_eq!(*x, expected, "w:{w} sh:{sh} sw:{sw} at {ix:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn nearest_upsample_hw_f32() {
+        check_nearest_hw(|i| i as f32);
+    }
+
+    #[test]
+    fn nearest_upsample_hw_f16() {
+        check_nearest_hw(|i| f16::from_f32(i as f32));
     }
 
     fn cubic_resize(input: Tensor, scales: &[f32]) -> Tensor {
