@@ -268,7 +268,7 @@ typedef decltype(diag_gather<float>) diag_gather_t;
 //   out[i_pre, i_n, i_post] = data[i_pre, indices[i_n], i_post]
 // where the host flattens to (pre × a_size × post) for data and
 // (pre × n_indices × post) for output.  Negative indices wrap with `a_size`,
-// matching the CPU contract.
+// matching the CPU contract; an index still outside [0, a_size) yields 0.
 //
 // params layout: [pre, a_size, post, n_indices]
 template <typename T>
@@ -297,8 +297,12 @@ template <typename T>
     if (k < 0)
         k += a_size;
 
-    const long in_off = ((long)i_pre * a_size + k) * post + i_post;
     const long out_off = ((long)i_pre * n_indices + i_n) * post + i_post;
+    if (k < 0 || k >= a_size) {
+        output[out_off] = T(0);
+        return;
+    }
+    const long in_off = ((long)i_pre * a_size + k) * post + i_post;
     output[out_off] = data[in_off];
 }
 
@@ -310,7 +314,8 @@ typedef decltype(gather<float>) gather_t;
 
 // GatherNd with f32 coordinate rows: output element i copies the element of
 // slice `row = i / inner` at `i % inner`, the slice being picked in batch
-// `row / rows` by the n coordinates of that row. Negative coordinates wrap.
+// `row / rows` by the n coordinates of that row. Negative coordinates wrap; a
+// coordinate still outside its axis, NaN included, yields 0.
 //
 // params layout: [len, inner, rows, n, batch_stride, dims[4], strides[4]]
 template <typename T>
@@ -330,10 +335,14 @@ template <typename T>
     const long row = i / inner;
     long src = (row / rows) * params[4] + i % inner;
     for (long k = 0; k < n; k++) {
-        long c = (long)indices[row * n + k];
-        if (c < 0)
-            c += params[5 + k];
-        src += c * params[9 + k];
+        float c = trunc(indices[row * n + k]);
+        if (c < 0.0f)
+            c += (float)params[5 + k];
+        if (!(c >= 0.0f && c < (float)params[5 + k])) {
+            output[i] = T(0);
+            return;
+        }
+        src += (long)c * params[9 + k];
     }
     output[i] = data[src];
 }

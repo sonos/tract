@@ -10,7 +10,8 @@ use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{register_wgpu_op, with_wgpu_queue};
 
 /// Gathers the slices of `data` that rows of f32 `indices` point at, after `batch_dims` axes
-/// both share.
+/// both share. Negative coordinates wrap; a coordinate still outside its axis, NaN included,
+/// yields 0.
 pub fn wgpu_gather_nd_dispatch(
     batch_dims: usize,
     data: &DeviceTensor,
@@ -102,8 +103,12 @@ fn gather_nd_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let row = i / params.inner;
     var src = params.off_data + (row / params.rows) * params.batch_stride + i % params.inner;
     for (var k = 0u; k < params.n; k++) {{
-        var c = i32(idx[params.off_idx + row * params.n + k]);
-        if (c < 0) {{ c += i32(params.dims[k]); }}
+        var c = trunc(idx[params.off_idx + row * params.n + k]);
+        if (c < 0.0) {{ c += f32(params.dims[k]); }}
+        if (!(c >= 0.0 && c < f32(params.dims[k]))) {{
+            outp[params.off_out + i] = {t}(0);
+            return;
+        }}
         src += u32(c) * params.strides[k];
     }}
     outp[params.off_out + i] = data[src];

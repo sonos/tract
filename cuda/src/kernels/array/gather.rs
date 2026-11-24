@@ -197,4 +197,16 @@ mod tests {
     fn test_gather_scalar_index() -> TractResult<()> {
         run_against_cpu(&[5, 8], &[], &[3], 0)
     }
+
+    #[test]
+    fn test_gather_out_of_range_indices_yield_zeros() -> TractResult<()> {
+        crate::with_cuda_stream(|stream| {
+            let data = Tensor::from_shape(&[4, 2], &(1..=8).map(|i| i as f32).collect::<Vec<_>>())?;
+            let indices = tensor1(&[4i64, -5, 1, i64::MAX, i64::MIN, 1 << 40]);
+            let out = Gather.eval(stream, &data.into_device()?, &indices.into_device()?, 0)?;
+            let expected =
+                Tensor::from_shape(&[6, 2], &[0f32, 0., 0., 0., 3., 4., 0., 0., 0., 0., 0., 0.])?;
+            expected.close_enough(&out.to_host()?.into_tensor(), Approximation::Exact)
+        })
+    }
 }

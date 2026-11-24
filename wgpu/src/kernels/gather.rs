@@ -88,8 +88,8 @@ pub fn translate_gather(
 
 /// `out[o, i, r] = data[o, indices[i], r]` over `(outer, axis, inner)` views,
 /// one thread per output element. The i64 indices are read as pairs of u32
-/// words, low word first: an index must fit in 32 bits, and a negative one
-/// counts from the end of the axis.
+/// words, low word first. A negative index counts from the end of the axis; one
+/// still outside the axis, or not fitting in 32 bits, yields 0.
 pub fn gather_module(dt: ShaderDtype) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
@@ -120,9 +120,17 @@ fn gather_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let n = (i / params.inner) % params.n_idx;
     let o = i / (params.inner * params.n_idx);
     var ix = bitcast<i32>(indices[2u * (params.off_idx + n)]);
+    let high = bitcast<i32>(indices[2u * (params.off_idx + n) + 1u]);
+    if (high != (ix >> 31u)) {{
+        outp[params.off_out + i] = {t}(0);
+        return;
+    }}
     if (ix < 0) {{ ix += i32(params.axis_len); }}
-    let at = u32(clamp(ix, 0, i32(params.axis_len) - 1));
-    outp[params.off_out + i] = data[params.off_data + (o * params.axis_len + at) * params.inner + r];
+    if (ix < 0 || ix >= i32(params.axis_len)) {{
+        outp[params.off_out + i] = {t}(0);
+        return;
+    }}
+    outp[params.off_out + i] = data[params.off_data + (o * params.axis_len + u32(ix)) * params.inner + r];
 }}
 "#
     ));
@@ -161,5 +169,55 @@ mod tests {
                 .with_context(|| format!("{data_shape:?} axis {axis} f16 {f16_}"))?;
         }
         Ok(())
+    }
+
+    fn run_on_wgpu(model: TypedModel, input: Tensor) -> TractResult<Tensor> {
+        crate::context::wgpu_context();
+        let rt = tract_core::runtime::runtime_for_name("wgpu")?
+            .context("wgpu runtime not registered")?;
+        Ok(rt.prepare(model)?.run(tvec!(input.into()))?.remove(0).into_tensor())
+    }
+
+    #[test]
+    fn gather_out_of_range_indices_yield_zeros() -> TractResult<()> {
+        use tract_core::ops::array::Gather;
+        let mut model = TypedModel::default();
+        let indices = model.add_source("indices", i64::fact([6]))?;
+        let table = Tensor::from_shape(&[4, 2], &(1..=8).map(|i| i as f32).collect::<Vec<_>>())?;
+        let table = model.add_const("table", table)?;
+        let y = model.wire_node("gather", Gather::new(0), &[table, indices])?[0];
+        model.select_output_outlets(&[y])?;
+        let out = run_on_wgpu(model, tensor1(&[4i64, -5, 1, i64::MAX, i64::MIN, 1 << 40]))?;
+        let expected =
+            Tensor::from_shape(&[6, 2], &[0f32, 0., 0., 0., 3., 4., 0., 0., 0., 0., 0., 0.])?;
+        expected.close_enough(&out, Approximation::Exact)
+    }
+
+    #[test]
+    fn gather_nd_out_of_range_coordinates_yield_zeros() -> TractResult<()> {
+        use tract_core::ops::array::GatherNd;
+        use tract_core::ops::cast::cast;
+        use tract_core::ops::math::floor;
+        let mut model = TypedModel::default();
+        let coords = model.add_source("coords", f32::fact([7, 2]))?;
+        let floored = model.wire_node("floor", floor(), &[coords])?;
+        let indices = model.wire_node("cast", cast(i64::datum_type()), &floored)?[0];
+        let table = Tensor::from_shape(&[4, 5], &(1..=20).map(|i| i as f32).collect::<Vec<_>>())?;
+        let table = model.add_const("table", table)?;
+        let y = model.wire_node("gather_nd", GatherNd::new(0), &[table, indices])?[0];
+        model.select_output_outlets(&[y])?;
+        ensure!(
+            transformed(model.clone())?
+                .nodes()
+                .iter()
+                .any(|n| n.op_is::<tract_gpu::ops::gather_nd::GpuGatherNd>()),
+            "gather_nd stayed on the CPU"
+        );
+        let coords = Tensor::from_shape(
+            &[7, 2],
+            &[0f32, 5., 4., 0., f32::NAN, 0., -1., -1., 1e30, 0., -5., 0., 1., f32::INFINITY],
+        )?;
+        let out = run_on_wgpu(model, coords)?;
+        tensor1(&[0f32, 0., 0., 20., 0., 0., 0.]).close_enough(&out, Approximation::Exact)
     }
 }

@@ -127,4 +127,21 @@ mod tests {
             &[0., 0., 5., 4., 1., 2., 3., 3., 2., 2., 0., 4., 5., 0., 4., 1.],
         )
     }
+
+    #[test]
+    fn test_gather_nd_out_of_range_coordinates_yield_zeros() -> TractResult<()> {
+        with_borrowed_metal_stream(|stream| {
+            let data =
+                Tensor::from_shape(&[4, 5], &(1..=20).map(|i| i as f32).collect::<Vec<_>>())?;
+            let indices = Tensor::from_shape(
+                &[7, 2],
+                &[0., 5., 4., 0., f32::NAN, 0., -1., -1., 1e30, 0., -5., 0., 1., f32::INFINITY],
+            )?;
+            let output = unsafe { DeviceTensor::uninitialized_dt(f32::datum_type(), &[7])? };
+            dispatch_eval(stream, 0, &data.into_device()?, &indices.into_device()?, &output)?;
+            stream.wait_until_completed()?;
+            tensor1(&[0f32, 0., 0., 20., 0., 0., 0.])
+                .close_enough(&output.to_host()?.into_tensor(), Approximation::Exact)
+        })
+    }
 }
