@@ -134,8 +134,7 @@ impl<'a> TensorView<'a> {
 
     /// Ensures `len` bytes starting `offset` bytes into the tensor storage lie inside it.
     fn check_bytes(&self, offset: isize, len: usize) -> TractResult<()> {
-        let size =
-            self.tensor.as_plain_ram().context("TensorView of non-plain storage")?.layout().size();
+        let size = self.tensor.storage.materialize_plain_ram()?.layout().size();
         ensure!(
             usize::try_from(offset)
                 .ok()
