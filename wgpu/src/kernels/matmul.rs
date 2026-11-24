@@ -8,7 +8,7 @@
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::RepackKey;
+use crate::context::{RepackKey, RepackLayout};
 use crate::kernels::shaders::{
     AT8, ChainStep, EntryPoint, GRID_LIMIT, LayoutKind, ModuleKey, ModuleKind, PipelineKey,
     ShaderDtype, WORKGROUP, binary_ops_wgsl, epilogue_body_at, keys_for, pack_u32s, preamble,
@@ -119,7 +119,13 @@ fn repacked_b(
     k: usize,
     n: usize,
 ) -> TractResult<DeviceTensor> {
-    let key = RepackKey { buffer: get_wgpu_buffer(b).id, offset: element_offset(b, 0), k, n };
+    let key = RepackKey {
+        buffer: get_wgpu_buffer(b).id,
+        offset: element_offset(b, 0),
+        k,
+        n,
+        layout: RepackLayout::Transposed,
+    };
     if let Some(packed) = q.repacked(&key) {
         return Ok(packed);
     }

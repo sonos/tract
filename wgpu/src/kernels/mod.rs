@@ -7,6 +7,8 @@ pub mod compare_select;
 pub mod conv;
 pub mod conv_splitk;
 #[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod coop_conv;
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod coop_gemm;
 pub mod copy;
 pub mod deconv;
