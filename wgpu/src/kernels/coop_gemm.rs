@@ -3,8 +3,9 @@
 //! One 32-lane subgroup owns a tile of 8x8 blocks. The operands are indexed as nested arrays so
 //! that every constant offset is its own dimension, which the Metal compiler turns into an address
 //! immediate; a constant added to a `u32` index is computed at run time instead. A short product
-//! with a long `k` splits `k` over several subgroups of one workgroup. The sum is accumulated in
-//! `f32`, so an `f16` product needs no `TRACT_WGPU_ALLOW_F16_ACCUMULATION`.
+//! with a long `k` splits `k` over several subgroups of one workgroup. An `f16` product accumulates
+//! in `f32` where the device has such a tile, so it needs no `TRACT_WGPU_ALLOW_F16_ACCUMULATION`.
+//! Browsers have none; there the product runs in `f16`, behind that knob.
 
 use std::fmt::Write;
 
@@ -12,14 +13,14 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::WgpuQueue;
+use crate::kernels::coop_dialect::{Dialect, Side, accumulator};
 use crate::kernels::matmul::Transposes;
 use crate::kernels::shaders::{
     ChainStep, EntryPoint, LayoutKind, ShaderDtype, binary_ops_wgsl, epilogue_body_at,
     unary_ops_wgsl,
 };
 use crate::kernels::subgroup::{
-    MatrixTile, SubgroupCaps, bindings, chosen_subgroup, dispatch_groups, enables, knob_on,
-    limits_of, stride_pair,
+    bindings, chosen_subgroup, dispatch_groups, enables, knob_on, limits_of, stride_pair,
 };
 use crate::utils::element_offset;
 
@@ -82,14 +83,6 @@ fn plan(m: usize, k: usize, n: usize) -> Option<Plan> {
     Some(Plan { tm, tn, step, split })
 }
 
-pub(crate) fn block_tile(caps: &SubgroupCaps, dt: ShaderDtype) -> Option<MatrixTile> {
-    match dt {
-        ShaderDtype::F32 => caps.f32_tile,
-        ShaderDtype::F16 => caps.f16_mixed_tile,
-    }
-    .filter(|t| (t.m, t.n, t.k) == (8, 8, 8))
-}
-
 /// The epilogue computed in `f32` on operands stored as `f16`.
 fn widened(body: &str) -> String {
     body.lines()
@@ -103,8 +96,11 @@ fn widened(body: &str) -> String {
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn shader(
+    dialect: Dialect,
     dt: ShaderDtype,
+    acc: ShaderDtype,
     epilogue: &[ChainStep],
     extras: usize,
     plan: Plan,
@@ -112,20 +108,25 @@ fn shader(
     k: usize,
 ) -> String {
     let Plan { tm, tn, step, split } = plan;
-    let t = dt.wgsl();
+    let (t, st) = (dt.wgsl(), acc.wgsl());
     let (bm, bn) = (BLOCK * tm, BLOCK * tn);
     let iterations = k / step;
     let span = tm * tn * 64;
     let mut s = enables(dt, true, false);
-    s.push_str(&bindings(
-        dt,
-        extras,
-        &format!("array<array<array<array<{t}, {bm}>, {}>, {step}>>", m / bm),
-        &format!("array<array<array<array<{t}, {step}>, {iterations}>, {bn}>>"),
-    ));
-    writeln!(s, "var<workgroup> stage: array<f32, {}>;", split * span).unwrap();
-    s.push_str(&unary_ops_wgsl("f32"));
-    s.push_str(&binary_ops_wgsl("f32"));
+    let [a_type, b_type] = match dialect {
+        Dialect::Naga => [
+            format!("array<array<array<array<{t}, {bm}>, {}>, {step}>>", m / bm),
+            format!("array<array<array<array<{t}, {step}>, {iterations}>, {bn}>>"),
+        ],
+        Dialect::Dawn => [
+            format!("array<array<array<{t}, {}>, {}>>", BLOCK * m, step / BLOCK),
+            format!("array<array<array<{t}, {}>, {tn}>>", BLOCK * k),
+        ],
+    };
+    s.push_str(&bindings(dt, extras, &a_type, &b_type));
+    writeln!(s, "var<workgroup> stage: array<{st}, {}>;", split * span).unwrap();
+    s.push_str(&unary_ops_wgsl(st));
+    s.push_str(&binary_ops_wgsl(st));
     let subgroup_id = if split > 1 { ", @builtin(subgroup_id) sg: u32" } else { "" };
     writeln!(
         s,
@@ -136,44 +137,43 @@ fn shader(
     .unwrap();
     s.push_str("    let lane = li & 31u;\n");
     for (i, j) in blocks(tm, tn) {
-        writeln!(s, "    var acc_{i}_{j} = coop_mat8x8<f32, C>();").unwrap();
+        writeln!(s, "    var acc_{i}_{j} = {};", dialect.accumulator(st)).unwrap();
     }
     let first = if split > 1 { "sg" } else { "0u" };
     writeln!(s, "    for (var kb = {first}; kb < {iterations}u; kb += {split}u) {{").unwrap();
     for q in (0..step).step_by(BLOCK) {
         s.push_str("    {\n");
         for j in 0..tn {
-            writeln!(
-                s,
-                "        let b_{j} = coopLoadT<coop_mat8x8<{t}, A>>(&b[wid.x][{}][kb][{q}], {k}u);",
-                j * BLOCK
-            )
-            .unwrap();
+            let place = format!("b[wid.x][{}][kb][{q}]", j * BLOCK);
+            let block = (&*format!("b[wid.x][{j}]"), &*format!("kb * {step}u + {q}u"));
+            let load = dialect.load(Side::Left, t, &place, block, k);
+            writeln!(s, "        let b_{j} = {load};").unwrap();
         }
         for i in 0..tm {
-            writeln!(
-                s,
-                "        let a_{i} = coopLoadT<coop_mat8x8<{t}, B>>(&a[kb][{q}][wid.y][{}], {m}u);",
-                i * BLOCK
-            )
-            .unwrap();
+            let place = format!("a[kb][{q}][wid.y][{}]", i * BLOCK);
+            let offset = format!("wid.y * {bm}u + {}u", i * BLOCK);
+            let block = (&*format!("a[kb][{}]", q / BLOCK), &*offset);
+            let load = dialect.load(Side::Right, t, &place, block, m);
+            writeln!(s, "        let a_{i} = {load};").unwrap();
         }
         for (i, j) in blocks(tm, tn) {
-            writeln!(s, "        acc_{i}_{j} = coopMultiplyAdd(b_{j}, a_{i}, acc_{i}_{j});")
-                .unwrap();
+            let acc = format!("acc_{i}_{j}");
+            let sum = dialect.multiply_add(&format!("b_{j}"), &format!("a_{i}"), &acc);
+            writeln!(s, "        {acc} = {sum};").unwrap();
         }
         s.push_str("    }\n");
     }
     s.push_str("    }\n");
     let base = if split > 1 { format!("sg * {span}u + ") } else { String::new() };
     for (i, j) in blocks(tm, tn) {
-        writeln!(s, "    coopStoreT(acc_{i}_{j}, &stage[{base}{}u], 8u);", (j * tm + i) * 64)
-            .unwrap();
+        let offset = format!("{base}{}u", (j * tm + i) * 64);
+        let store = dialect.store(&format!("acc_{i}_{j}"), "stage", &offset, BLOCK);
+        writeln!(s, "    {store}").unwrap();
     }
     s.push_str("    workgroupBarrier();\n    if (li < 32u) {\n");
     let body = epilogue_body_at(epilogue, "col", "oe");
-    let body = if dt == ShaderDtype::F16 { widened(&body) } else { body };
-    let store = if dt == ShaderDtype::F16 { "f16(v)" } else { "v" };
+    let body = if acc != dt { widened(&body) } else { body };
+    let store = if acc != dt { "f16(v)" } else { "v" };
     for (i, j) in blocks(tm, tn) {
         for half in 0..2 {
             let at = (j * tm + i) * 64 + 32 * half;
@@ -209,6 +209,7 @@ pub(crate) fn try_dispatch(
     extras: &[&DeviceTensor],
     output: &DeviceTensor,
     dt: ShaderDtype,
+    f16_accumulation: bool,
     m: usize,
     k: usize,
     n: usize,
@@ -222,15 +223,14 @@ pub(crate) fn try_dispatch(
         && knob_on(&caps)
         && caps.matrix
         && subgroup.is_some()
-        && block_tile(&caps, dt).is_some()
         && stride_pair(a, t.a) == (1, m as isize)
         && stride_pair(b, t.b) == (1, k as isize)
         && stride_pair(output, t.c) == (1, m as isize)
         && element_offset(a, 0) == 0
         && element_offset(b, 0) == 0;
-    if !fits {
+    let Some(acc) = accumulator(&caps, dt, f16_accumulation).filter(|_| fits) else {
         return Ok(false);
-    }
+    };
     let Some(plan) = plan(m, k, n) else { return Ok(false) };
     let threads = LANES * plan.split as u32;
     if threads > max_invocations.min(max_x) {
@@ -238,10 +238,10 @@ pub(crate) fn try_dispatch(
     }
     let layout = LayoutKind::Chain(3 + extras.len() as u8);
     let pipeline = q.context().chain_pipeline(
-        ("matmul_coop", dt, plan, m, k, epilogue.to_vec(), extras.len()),
+        ("matmul_coop", dt, acc, plan, m, k, epilogue.to_vec(), extras.len()),
         layout,
         EntryPoint::typed("matmul_coop", dt),
-        || shader(dt, epilogue, extras.len(), plan, m, k),
+        || shader(Dialect::CURRENT, dt, acc, epilogue, extras.len(), plan, m, k),
     )?;
     let groups = [(n / (BLOCK * plan.tn)) as u32, (m / (BLOCK * plan.tm)) as u32, 1];
     dispatch_groups(
@@ -305,13 +305,25 @@ mod tests {
     }
 
     #[test]
-    fn accumulates_in_f32_and_declares_the_nested_operands() {
+    fn f16_operands_accumulate_in_f32() {
         let plan = plan(576, 96, 576).unwrap();
-        let source = shader(ShaderDtype::F16, &[], 0, plan, 576, 96);
+        let source =
+            shader(Dialect::Naga, ShaderDtype::F16, ShaderDtype::F32, &[], 0, plan, 576, 96);
         assert!(source.contains("coop_mat8x8<f32, C>()"));
         assert!(source.contains("coop_mat8x8<f16, A>"));
         assert!(source.contains("var<workgroup> stage: array<f32"));
         assert!(!source.contains("subgroup_id"));
+    }
+
+    #[test]
+    fn dawn_accumulates_in_f16_from_arrays_of_eight_rows() {
+        let plan = plan(576, 96, 576).unwrap();
+        let source =
+            shader(Dialect::Dawn, ShaderDtype::F16, ShaderDtype::F16, &[], 0, plan, 576, 96);
+        assert!(source.contains("subgroup_matrix_result<f16, 8, 8>()"));
+        assert!(source.contains("array<array<array<f16, 4608>, 4>>"));
+        assert!(source.contains("var<workgroup> stage: array<f16"));
+        assert!(!source.contains("coop_mat") && !source.contains("coopLoad"));
     }
 
     /// Device values. Needs `TRACT_WGPU_SUBGROUPS=1` set before the first device is created:
@@ -323,7 +335,7 @@ mod tests {
             return Ok(());
         }
         let caps = *crate::wgpu_context().subgroup_caps();
-        if block_tile(&caps, ShaderDtype::F16).is_none() {
+        if accumulator(&caps, ShaderDtype::F16, false).is_none() {
             eprintln!("cooperative GEMM test skipped: {caps:?}");
             return Ok(());
         }

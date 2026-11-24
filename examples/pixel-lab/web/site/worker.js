@@ -4,13 +4,14 @@ const stamped = file => import(`./${file}?stamp=${stamp}`);
 // The page posts the first command as soon as the worker is created. A top-level
 // await yields before onmessage exists, and Chrome drops that message, so the
 // canvas is transferred and never drawn. Load the modules in the handler instead.
-let model, modelUrl, rvmScale, formatR, holdsUncertainMask, runsF16, sharesDeviceByDefault, shouldWarp, isFirefox, createCompletionPoll;
+let model, modelUrl, rvmScale, formatR, holdsUncertainMask, runsF16, sharesDeviceByDefault, shouldWarp, isFirefox, createCompletionPoll, usesCooperative;
 const modulesReady = Promise.all([
-  stamped('models.mjs'), stamped('pairing.mjs'), stamped('firefox-poll.mjs'),
-]).then(([models, pairing, firefoxPoll]) => {
+  stamped('models.mjs'), stamped('pairing.mjs'), stamped('firefox-poll.mjs'), stamped('cooperative.mjs'),
+]).then(([models, pairing, firefoxPoll, cooperative]) => {
   ({model, modelUrl, rvmScale, formatR, holdsUncertainMask, runsF16, sharesDeviceByDefault} = models);
   shouldWarp = pairing.shouldWarp;
   ({isFirefox, createCompletionPoll} = firefoxPoll);
+  ({usesCooperative} = cooperative);
 });
 
 let modulePromise, segmenter, tractDevice, composer, device, frameCanvas, frameContext, modelCanvas, modelContext, mask, gpuFrames = 0, framesSeen = 0, inferredFrame = 0, motion = false;
@@ -173,11 +174,12 @@ function inferLatest() {
 async function command(type, payload) {
   if (type === 'init') {
     const m = model(payload.model);
-    const [{Segmenter}, bytes, {Compositor}] = await Promise.all([wasm(), download(m), stamped('compositor.js')]);
+    const [{Segmenter, use_cooperative_matrices: useCooperativeMatrices}, bytes, {Compositor}] = await Promise.all([wasm(), download(m), stamped('compositor.js')]);
     const width = m.kind === 'rvm' ? payload.canvas.width : m.width;
     const height = m.kind === 'rvm' ? payload.canvas.height : m.height;
     const ratio = m.kind === 'rvm' ? rvmScale(width, height, payload.ratio) : undefined;
     post({status: `Preparing ${m.name} on WebGPU…`});
+    if (payload.cooperative) useCooperativeMatrices();
     segmenter = m.kind === 'rvm'
       ? await Segmenter.create_rvm(bytes, width, height, ratio)
       : await Segmenter.create(bytes, width, height, m.mean, m.std, runsF16(m, payload.f16));
@@ -217,7 +219,7 @@ async function command(type, payload) {
     framesSeen = inferredFrame = 0;
     lastPresented = null;
     rvmSize = m.kind === 'rvm' ? {width, height} : null;
-    return {ops, ratio, f16: runsF16(m, payload.f16), sharedDevice: shared};
+    return {ops, ratio, f16: runsF16(m, payload.f16), cooperative: usesCooperative(tractDevice), sharedDevice: shared};
   }
   if (type === 'ratio') {
     if (!rvmSize) throw new Error('R factor is only for RVM');

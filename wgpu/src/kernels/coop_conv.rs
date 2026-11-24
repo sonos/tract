@@ -5,7 +5,7 @@
 //! repacked once into contiguous 8x8 blocks. Rows above and below the map are zero matrices; the
 //! tap column that leaves the map at the left and right edge reuses the centre tile and is added
 //! one pixel over. A map too small to fill the device splits its input channels over several
-//! subgroups. The sum is accumulated in `f32`.
+//! subgroups. The sum is accumulated in what [`accumulator`] names.
 
 use std::fmt::Write;
 
@@ -17,13 +17,13 @@ use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{RepackKey, RepackLayout, WgpuQueue};
 use crate::kernels::conv::conv_direct_epilogue;
-use crate::kernels::coop_gemm::block_tile;
+use crate::kernels::coop_dialect::{Dialect, Side, accumulator};
 use crate::kernels::matmul::epilogue_mode;
 use crate::kernels::shaders::{
     ChainStep, EntryPoint, GRID_LIMIT, LayoutKind, ShaderDtype, binary_ops_wgsl, pack_u32s,
     unary_ops_wgsl,
 };
-use crate::kernels::subgroup::{chosen_subgroup, knob_on, limits_of};
+use crate::kernels::subgroup::{chosen_subgroup, enables, knob_on, limits_of};
 use crate::utils::{element_offset, get_wgpu_buffer};
 
 const LANES: usize = 32;
@@ -169,14 +169,16 @@ fn conv2d_coop_pack_{}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 }
 
 fn shader(
+    dialect: Dialect,
     dt: ShaderDtype,
+    acc: ShaderDtype,
     epilogue: &[ChainStep],
     extras: usize,
     [ci, h, w]: [usize; 3],
     tile: Tile,
 ) -> String {
     let Tile { rows, pixels, channels, split } = tile;
-    let t = dt.wgsl();
+    let (t, st) = (dt.wgsl(), acc.wgsl());
     let (map, width) = (h * w, tile.width());
     let in_blocks = ci.div_ceil(BLOCK);
     let (row_span, span) = (tile.row_span(), tile.span());
@@ -184,15 +186,18 @@ fn shader(
     let blocks: Vec<_> = (0..rows)
         .flat_map(|d| (0..channels).flat_map(move |c| (0..pixels).map(move |p| (d, c, p))))
         .collect();
-    let enable = if dt == ShaderDtype::F16 { "enable f16;\n" } else { "" };
+    let enable = enables(dt, true, false);
+    let input = match dialect {
+        Dialect::Naga => format!("array<array<{t}, {map}>>"),
+        Dialect::Dawn => format!("array<{t}>"),
+    };
     let extra_bindings = (0..extras)
         .map(|i| {
             format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
         })
         .collect::<String>();
     let mut s = format!(
-        r#"enable wgpu_cooperative_matrix;
-{enable}struct Params {{
+        r#"{enable}struct Params {{
     off_out: u32,
     _p0: u32,
     _p1: u32,
@@ -201,14 +206,14 @@ fn shader(
     mode_extra: vec4<u32>,
 }}
 
-@group(0) @binding(0) var<storage, read> inp: array<array<{t}, {map}>>;
+@group(0) @binding(0) var<storage, read> inp: {input};
 @group(0) @binding(1) var<storage, read> wgt: array<array<array<array<array<{t}, 64>, {TAPS}>, {in_blocks}>, {channels}>>;
 {extra_bindings}@group(0) @binding({}) var<storage, read_write> outp: array<{t}>;
 @group(0) @binding({}) var<uniform> params: Params;
-var<workgroup> stage: array<array<f32, {span}>, {split}>;
-var<workgroup> edge_stage: array<array<f32, {span}>, {split}>;
+var<workgroup> stage: array<array<{st}, {span}>, {split}>;
+var<workgroup> edge_stage: array<array<{st}, {span}>, {split}>;
 {}{}
-fn epi(acc: f32, co: u32) -> {t} {{
+fn epi(acc: {st}, co: u32) -> {t} {{
     var v = acc;
 {}    return {t}(v);
 }}
@@ -216,9 +221,9 @@ fn epi(acc: f32, co: u32) -> {t} {{
 "#,
         2 + extras,
         3 + extras,
-        unary_ops_wgsl("f32"),
-        binary_ops_wgsl("f32"),
-        conv_direct_epilogue(epilogue, dt == ShaderDtype::F16),
+        unary_ops_wgsl(st),
+        binary_ops_wgsl(st),
+        conv_direct_epilogue(epilogue, acc != dt),
     );
     let subgroup_id = if split > 1 { ", @builtin(subgroup_id) sg: u32" } else { "" };
     writeln!(
@@ -239,7 +244,7 @@ fn epi(acc: f32, co: u32) -> {t} {{
         writeln!(s, "    let r{u} = (y0 + {u}u - 1u) * {w}u + x0;").unwrap();
     }
     for (d, c, p) in &blocks {
-        writeln!(s, "    var a{d}_{c}_{p} = coop_mat8x8<f32, C>();").unwrap();
+        writeln!(s, "    var a{d}_{c}_{p} = {};", dialect.accumulator(st)).unwrap();
     }
     // One pass over the input channels for the tap columns `ks` and their pixel shifts. `edge` is
     // the tap column that leaves the map, accumulated apart on the centre tile.
@@ -260,14 +265,20 @@ fn epi(acc: f32, co: u32) -> {t} {{
         .unwrap();
         for (u, p) in (0..rows + 2).flat_map(|u| (0..pixels).map(move |p| (u, p))) {
             for (k, _) in ks {
-                let load =
-                    format!("coopLoadT<coop_mat8x8<{t}, B>>(&inp[cs][o{u}_{k}_{p}], {map}u)");
+                let load = dialect.load(
+                    Side::Right,
+                    t,
+                    &format!("inp[cs][o{u}_{k}_{p}]"),
+                    ("inp", &format!("cs * {map}u + o{u}_{k}_{p}")),
+                    map,
+                );
                 let name = format!("i{u}_{k}_{p}");
                 if guarded && (u == 0 || u == rows + 1) {
                     let inside = if u == 0 { "!top" } else { "!bottom" };
                     writeln!(
                         s,
-                        "        var {name} = coop_mat8x8<{t}, B>();\n        if ({inside}) {{ {name} = {load}; }}"
+                        "        var {name} = {};\n        if ({inside}) {{ {name} = {load}; }}",
+                        dialect.zero(Side::Right, t)
                     )
                     .unwrap();
                 } else {
@@ -276,30 +287,25 @@ fn epi(acc: f32, co: u32) -> {t} {{
             }
         }
         let weight = |tap: usize, c: usize| {
-            format!("coopLoadT<coop_mat8x8<{t}, A>>(&wgt[g][{c}][b][{tap}][0], 8u)")
+            let block = format!("wgt[g][{c}][b][{tap}]");
+            dialect.load(Side::Left, t, &format!("{block}[0]"), (&block, "0u"), BLOCK)
         };
         for (c, row) in (0..channels).flat_map(|c| (0..3).map(move |row| (c, row))) {
             for (k, _) in ks {
                 writeln!(s, "        {{ let wm = {};", weight(row * 3 + k, c)).unwrap();
                 for (d, p) in (0..rows).flat_map(|d| (0..pixels).map(move |p| (d, p))) {
-                    writeln!(
-                        s,
-                        "            a{d}_{c}_{p} = coopMultiplyAdd(wm, i{}_{k}_{p}, a{d}_{c}_{p});",
-                        d + row
-                    )
-                    .unwrap();
+                    let acc = format!("a{d}_{c}_{p}");
+                    let sum = dialect.multiply_add("wm", &format!("i{}_{k}_{p}", d + row), &acc);
+                    writeln!(s, "            {acc} = {sum};").unwrap();
                 }
                 s.push_str("        }\n");
             }
             if let Some(tap) = edge {
                 writeln!(s, "        {{ let we = {};", weight(row * 3 + tap, c)).unwrap();
                 for (d, p) in (0..rows).flat_map(|d| (0..pixels).map(move |p| (d, p))) {
-                    writeln!(
-                        s,
-                        "            e{d}_{c}_{p} = coopMultiplyAdd(we, i{}_1_{p}, e{d}_{c}_{p});",
-                        d + row
-                    )
-                    .unwrap();
+                    let acc = format!("e{d}_{c}_{p}");
+                    let sum = dialect.multiply_add("we", &format!("i{}_1_{p}", d + row), &acc);
+                    writeln!(s, "            {acc} = {sum};").unwrap();
                 }
                 s.push_str("        }\n");
             }
@@ -310,13 +316,15 @@ fn epi(acc: f32, co: u32) -> {t} {{
     let store = |s: &mut String, name: &str, stage: &str| {
         for (d, c, p) in &blocks {
             let at = d * row_span + c * BLOCK * width + p * BLOCK;
-            writeln!(s, "    coopStoreT({name}{d}_{c}_{p}, &{stage}[{index}][{at}u], {width}u);")
-                .unwrap();
+            let array = format!("{stage}[{index}]");
+            let store =
+                dialect.store(&format!("{name}{d}_{c}_{p}"), &array, &format!("{at}u"), width);
+            writeln!(s, "    {store}").unwrap();
         }
     };
     let edge_accumulators = |s: &mut String| {
         for (d, c, p) in &blocks {
-            writeln!(s, "    var e{d}_{c}_{p} = coop_mat8x8<f32, C>();").unwrap();
+            writeln!(s, "    var e{d}_{c}_{p} = {};", dialect.accumulator(st)).unwrap();
         }
     };
     s.push_str("    if (left | right | top | bottom) {\n    if (left) {\n");
@@ -386,6 +394,7 @@ pub(crate) fn try_dispatch(
     extras: &[&DeviceTensor],
     output: &DeviceTensor,
     dt: ShaderDtype,
+    f16_accumulation: bool,
 ) -> TractResult<bool> {
     let caps = *q.context().subgroup_caps();
     let subgroup =
@@ -393,16 +402,15 @@ pub(crate) fn try_dispatch(
     let runs = knob_on(&caps)
         && caps.matrix
         && subgroup.is_some()
-        && block_tile(&caps, dt).is_some()
         && op.group == 1
         && op.kernel_fmt == KernelFormat::OIHW
         && op.pool_spec.data_format == DataFormat::NCHW
         && op.pool_spec.kernel_shape[..] == [3, 3]
         && op.pool_spec.strides()[..] == [1, 1]
         && op.pool_spec.dilations()[..] == [1, 1];
-    if !runs {
+    let Some(acc) = accumulator(&caps, dt, f16_accumulation).filter(|_| runs) else {
         return Ok(false);
-    }
+    };
     let pads = op.pool_spec.computed_padding(&input.shape()[2..]);
     let [ci, co] = [op.pool_spec.input_channels, op.pool_spec.output_channels];
     let &[n, _, ih, iw] = input.shape() else { return Ok(false) };
@@ -439,10 +447,10 @@ pub(crate) fn try_dispatch(
     let layout = LayoutKind::Chain(3 + extras.len() as u8);
     let shape = [ci, co, h, w];
     let pipeline = q.context().chain_pipeline(
-        ("conv_coop", dt, shape, tile, epilogue.to_vec(), extras.len()),
+        ("conv_coop", dt, acc, shape, tile, epilogue.to_vec(), extras.len()),
         layout,
         EntryPoint::typed("conv2d_coop", dt),
-        || shader(dt, epilogue, extras.len(), [ci, h, w], tile),
+        || shader(Dialect::CURRENT, dt, acc, epilogue, extras.len(), [ci, h, w], tile),
     )?;
     let mut buffers = vec![get_wgpu_buffer(input), get_wgpu_buffer(&packed)];
     buffers.extend(extras.iter().map(|t| get_wgpu_buffer(t)));
@@ -493,11 +501,23 @@ mod tests {
     #[test]
     fn edge_columns_and_rows_have_their_own_paths() {
         let t = tile(16, 16, 32, 32).unwrap();
-        let source = shader(ShaderDtype::F16, &[], 0, [16, 32, 32], t);
+        let source =
+            shader(Dialect::Naga, ShaderDtype::F16, ShaderDtype::F32, &[], 0, [16, 32, 32], t);
         assert!(source.contains("left | right | top | bottom"));
         assert!(source.contains("if (!top)") && source.contains("if (!bottom)"));
         assert!(source.contains("coop_mat8x8<f32, C>()"));
         assert!(!source.contains("left || right"));
+    }
+
+    #[test]
+    fn dawn_reads_the_flat_map_and_accumulates_in_f16() {
+        let t = tile(16, 16, 32, 32).unwrap();
+        let source =
+            shader(Dialect::Dawn, ShaderDtype::F16, ShaderDtype::F16, &[], 0, [16, 32, 32], t);
+        assert!(source.contains("var<storage, read> inp: array<f16>;"));
+        assert!(source.contains("subgroup_matrix_result<f16, 8, 8>()"));
+        assert!(source.contains("fn epi(acc: f16"));
+        assert!(!source.contains("coop_mat") && !source.contains("coopLoad"));
     }
 
     /// Products of 300 x 300 overflow `f16` and cancel only when they are added in `f32`.
@@ -505,7 +525,7 @@ mod tests {
     fn a_sum_that_overflows_f16_still_cancels() -> TractResult<()> {
         use tract_gpu::tensor::IntoDevice;
         if !TRACT_WGPU_SUBGROUPS.get()
-            || block_tile(crate::wgpu_context().subgroup_caps(), ShaderDtype::F16).is_none()
+            || accumulator(crate::wgpu_context().subgroup_caps(), ShaderDtype::F16, false).is_none()
         {
             return Ok(());
         }
@@ -559,7 +579,7 @@ mod tests {
 
     fn engages() -> bool {
         TRACT_WGPU_SUBGROUPS.get()
-            && block_tile(crate::wgpu_context().subgroup_caps(), ShaderDtype::F32).is_some()
+            && accumulator(crate::wgpu_context().subgroup_caps(), ShaderDtype::F32, false).is_some()
     }
 
     /// The last block of channels shares channels with the block before when `ci` is not a multiple
@@ -623,7 +643,7 @@ mod tests {
             return Ok(());
         }
         let caps = *crate::wgpu_context().subgroup_caps();
-        if block_tile(&caps, ShaderDtype::F16).is_none() {
+        if accumulator(&caps, ShaderDtype::F16, false).is_none() {
             eprintln!("cooperative conv test skipped: {caps:?}");
             return Ok(());
         }
