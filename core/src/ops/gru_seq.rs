@@ -212,7 +212,7 @@ impl GruSeq {
                 pf.repack_tensor_view(&mut packed_ht, &ht.view(), 1, 0)?;
                 let pb = &packed_ht;
                 unsafe {
-                    let c = mmm.c_view(Some(1), Some(0)).wrap(&rh.view_mut());
+                    let c = mmm.c_view(Some(1), Some(0)).wrap(&mut rh.view_mut());
                     mmm.run(
                         3 * h,
                         batch,

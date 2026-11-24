@@ -96,7 +96,9 @@ mod bench_8x8 {
                                 b: AsInputValue::Borrowed(&*pb),
                                 packing: 0,
                             },
-                            FusedSpec::Store(kernel.c_view(Some(0), Some(1)).wrap(&c.view_mut())),
+                            FusedSpec::Store(
+                                kernel.c_view(Some(0), Some(1)).wrap(&mut c.view_mut()),
+                            ),
                         ],
                     )
                     .unwrap();
@@ -116,7 +118,9 @@ mod bench_8x8 {
                                 b: AsInputValue::Borrowed(&*pb),
                                 packing: 0,
                             },
-                            FusedSpec::Store(kernel.c_view(Some(0), Some(1)).wrap(&c.view_mut())),
+                            FusedSpec::Store(
+                                kernel.c_view(Some(0), Some(1)).wrap(&mut c.view_mut()),
+                            ),
                         ],
                     )
                     .unwrap();
@@ -187,7 +191,9 @@ mod bench_32x1 {
                                 b: AsInputValue::Borrowed(&*pb),
                                 packing: 0,
                             },
-                            FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
+                            FusedSpec::Store(
+                                kernel.c_view(Some(0), Some(0)).wrap(&mut c.view_mut()),
+                            ),
                         ],
                     )
                     .unwrap();
@@ -207,7 +213,9 @@ mod bench_32x1 {
                                 b: AsInputValue::Borrowed(&*pb),
                                 packing: 0,
                             },
-                            FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
+                            FusedSpec::Store(
+                                kernel.c_view(Some(0), Some(0)).wrap(&mut c.view_mut()),
+                            ),
                         ],
                     )
                     .unwrap();
@@ -278,7 +286,9 @@ mod bench_16x1 {
                                 b: AsInputValue::Borrowed(&*pb),
                                 packing: 0,
                             },
-                            FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
+                            FusedSpec::Store(
+                                kernel.c_view(Some(0), Some(0)).wrap(&mut c.view_mut()),
+                            ),
                         ],
                     )
                     .unwrap();
@@ -298,7 +308,9 @@ mod bench_16x1 {
                                 b: AsInputValue::Borrowed(&*pb),
                                 packing: 0,
                             },
-                            FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
+                            FusedSpec::Store(
+                                kernel.c_view(Some(0), Some(0)).wrap(&mut c.view_mut()),
+                            ),
                         ],
                     )
                     .unwrap();
@@ -373,7 +385,9 @@ mod bench_i8_4x4 {
                                 b: AsInputValue::Borrowed(&*pb),
                                 packing: I8I8,
                             },
-                            FusedSpec::Store(kernel.c_view(Some(0), Some(1)).wrap(&c.view_mut())),
+                            FusedSpec::Store(
+                                kernel.c_view(Some(0), Some(1)).wrap(&mut c.view_mut()),
+                            ),
                         ],
                     )
                     .unwrap();
@@ -393,7 +407,9 @@ mod bench_i8_4x4 {
                                 b: AsInputValue::Borrowed(&*pb),
                                 packing: I8I8,
                             },
-                            FusedSpec::Store(kernel.c_view(Some(0), Some(1)).wrap(&c.view_mut())),
+                            FusedSpec::Store(
+                                kernel.c_view(Some(0), Some(1)).wrap(&mut c.view_mut()),
+                            ),
                         ],
                     )
                     .unwrap();
@@ -901,7 +917,7 @@ mod bench_i8_matvec {
                             b: AsInputValue::Borrowed(&*pb),
                             packing: I8I8,
                         },
-                        FusedSpec::Store(kernel.c_view(Some(0), Some(1)).wrap(&c.view_mut())),
+                        FusedSpec::Store(kernel.c_view(Some(0), Some(1)).wrap(&mut c.view_mut())),
                     ],
                 )
                 .unwrap();

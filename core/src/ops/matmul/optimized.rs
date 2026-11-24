@@ -100,7 +100,7 @@ impl ProtoFusedSpec {
         &'t self,
         inputs: &'t [TValue],
         output_coords: &[usize],
-        output: &Tensor,
+        output: &mut Tensor,
         mmm: &dyn MatMatMul,
         mode: usize,
     ) -> FusedSpec<'t> {
@@ -146,12 +146,12 @@ impl ProtoFusedSpec {
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
             ProtoFusedSpec::BinPerRow(v, op, map) => {
                 let mut v = inputs[*v].view();
-                unsafe { map.translate_view(output_coords, &mut v) }
+                map.translate_view(output_coords, &mut v);
                 FusedSpec::BinPerRow(v, *op)
             }
             ProtoFusedSpec::BinPerCol(v, op, map) => {
                 let mut v = inputs[*v].view();
-                unsafe { map.translate_view(output_coords, &mut v) }
+                map.translate_view(output_coords, &mut v);
                 FusedSpec::BinPerCol(v, *op)
             }
             ProtoFusedSpec::AddRowColProducts(row, col) => {
@@ -160,12 +160,14 @@ impl ProtoFusedSpec {
             ProtoFusedSpec::AddUnicast(store, v, map) => unsafe {
                 let mut view = inputs[*v].view();
                 map.translate_view(output_coords, &mut view);
-                FusedSpec::AddUnicast(store.wrap(&view))
+                FusedSpec::AddUnicast(store.wrap_read(&view))
             },
             ProtoFusedSpec::Scaler(scaler) => scaler.as_fused_spec(),
             ProtoFusedSpec::Store(oss) => unsafe {
-                let view = output.view_offsetting_unchecked(output_coords);
-                FusedSpec::Store(oss[mode].wrap(&view))
+                let mut view = output
+                    .view_offsetting_mut(output_coords)
+                    .expect("output coords inside the output");
+                FusedSpec::Store(oss[mode].wrap(&mut view))
             },
         };
         fs
@@ -225,11 +227,11 @@ impl ProtoFusedSpec {
             }
             ProtoFusedSpec::AddUnicast(store, v, _) => unsafe {
                 let view = inputs[*v].view();
-                FusedSpec::AddUnicast(store.wrap(&view))
+                FusedSpec::AddUnicast(store.wrap_read(&view))
             },
             ProtoFusedSpec::Scaler(scaler) => scaler.as_fused_spec(),
             ProtoFusedSpec::Store(oss) => unsafe {
-                FusedSpec::Store(oss[mode].wrap(&output.view_mut()))
+                FusedSpec::Store(oss[mode].wrap(&mut output.view_mut()))
             },
         };
         fs
@@ -250,8 +252,8 @@ impl ProtoFusedSpec {
         match self {
             ProtoFusedSpec::Store(oss) => unsafe {
                 FusedSpec::Store(match store {
-                    Some(cached) => cached.with_tensor(&output.view()),
-                    None => oss[mode].wrap(&output.view_mut()),
+                    Some(cached) => cached.with_tensor(&mut output.view_mut()),
+                    None => oss[mode].wrap(&mut output.view_mut()),
                 })
             },
             _ => self.resolve_trivial(inputs, output, mmm, mode),
@@ -347,9 +349,10 @@ pub struct MapOutputAxisToInput(pub TVec<(usize, usize)>);
 
 impl MapOutputAxisToInput {
     #[inline]
-    unsafe fn translate_view(&self, output_coords: &[usize], v: &mut TensorView) {
+    fn translate_view(&self, output_coords: &[usize], v: &mut TensorView) {
         for &(out_axis, in_axis) in &self.0 {
-            unsafe { v.offset_axis(in_axis, output_coords[out_axis] as isize) }
+            v.offset_axis(in_axis, output_coords[out_axis])
+                .expect("output coords map inside the input");
         }
     }
 
@@ -506,7 +509,7 @@ impl OptMatMul {
                         .micro_ops
                         .iter()
                         .map(|o| match o {
-                            ProtoFusedSpec::Store(oss) => Some(oss[mode].wrap(&c.view())),
+                            ProtoFusedSpec::Store(oss) => Some(oss[mode].wrap_read(&c.view())),
                             _ => None,
                         })
                         .collect(),
@@ -537,7 +540,7 @@ impl OptMatMul {
                         *uops.get_unchecked_mut(ix) = self.micro_ops.get_unchecked(ix).resolve(
                             &inputs,
                             c_coords.slice(),
-                            &c,
+                            &mut c,
                             mmm,
                             mode,
                         );

@@ -8,7 +8,7 @@ use rayon::{ThreadPool, ThreadPoolBuilder};
 
 use tract_data::internal::num_integer::Integer;
 use tract_data::internal::vector_size;
-use tract_data::internal::{Tensor, TensorView, TractResult, ensure};
+use tract_data::internal::{Tensor, TensorView, TensorViewMut, TractResult, ensure};
 
 use crate::BinFn;
 
@@ -305,35 +305,23 @@ pub fn par_bin(
         ),
     }
 
-    let a_item = a.datum_type().size_of() as isize;
-    let b_item = b.datum_type().size_of() as isize;
-    // The writes below go through views built from a shared reference, so the
-    // storage has to be made exclusive and plain host memory here, while we
-    // still hold `&mut`.
-    a.try_as_plain_ram_mut()?;
-    let a = &*a;
-    // `len` elements of block `block`, starting `offset` elements into it. Both
-    // tensors are naturally strided, so a's flat element index is
-    // `block * period + offset` and b's is `offset` (Lockstep) or `block`
-    // (PerBlock).
-    let call = |block: usize, offset: usize, len: usize| -> TractResult<()> {
+    let dt = a.datum_type();
+    let a_item = dt.size_of();
+    let b_item = b.datum_type().size_of();
+    // `a_part` is the piece of block `block` starting `offset` elements into it. Both
+    // tensors are naturally strided, so b's matching flat element index is `offset`
+    // (Lockstep) or `block` (PerBlock).
+    let call = |block: usize, offset: usize, a_part: &mut [u8]| -> TractResult<()> {
         static STRIDES: [isize; 1] = [1];
+        let len = a_part.len() / a_item;
         let a_shape = [len];
         let (b_offset, b_shape) = match share {
-            BShare::Lockstep => (offset as isize * b_item, [len]),
-            BShare::PerBlock => (block as isize * b_item, [1]),
+            BShare::Lockstep => (offset * b_item, [len]),
+            BShare::PerBlock => (block * b_item, [1]),
         };
-        let a_offset = (block * period + offset) as isize * a_item;
-        // `offset + len <= period` and blocks are disjoint, so the byte range
-        // `[a_offset, a_offset + len * a_item)` is disjoint across every
-        // (block, offset) the dispatch below enumerates. That is what makes the
-        // concurrent writes through these views non-aliasing; keep it true if the
-        // chunk arithmetic changes.
-        unsafe {
-            let mut a_chunk = TensorView::from_bytes(a, a_offset, &a_shape, &STRIDES);
-            let b_chunk = TensorView::from_bytes(b, b_offset, &b_shape, &STRIDES);
-            eval_fn(&mut a_chunk, &b_chunk)
-        }
+        let mut a_view = TensorViewMut::from_pod_bytes(dt, a_part, &a_shape, &STRIDES)?;
+        let b_view = TensorView::from_bytes(b, b_offset, &b_shape, &STRIDES)?;
+        eval_fn(&mut a_view, &b_view)
     };
 
     #[cfg(feature = "multithread-mm")]
@@ -359,15 +347,21 @@ pub fn par_bin(
                 let chunk = period.div_ceil(per_block).next_multiple_of(vector_size()).min(period);
                 let per_block = period.div_ceil(chunk);
                 if n_blocks * per_block > 1 {
-                    let run = || {
-                        (0..n_blocks * per_block).into_par_iter().try_for_each(|i| {
-                            let offset = (i % per_block) * chunk;
-                            call(i / per_block, offset, chunk.min(period - offset))
-                        })
+                    a.try_as_plain_ram_mut()?;
+                    let a_bytes = a.as_bytes_mut();
+                    let run = |a_bytes: &mut [u8]| {
+                        a_bytes.par_chunks_mut(period * a_item).enumerate().try_for_each(
+                            |(block, block_bytes)| {
+                                block_bytes
+                                    .par_chunks_mut(chunk * a_item)
+                                    .enumerate()
+                                    .try_for_each(|(i, part)| call(block, i * chunk, part))
+                            },
+                        )
                     };
                     return match executor {
-                        Executor::MultiThread(pool) => pool.install(run),
-                        _ => run(),
+                        Executor::MultiThread(pool) => pool.install(|| run(a_bytes)),
+                        _ => run(a_bytes),
                     };
                 }
             }
@@ -378,9 +372,13 @@ pub fn par_bin(
     // rather than a rank-1 one: fewer shapes for a future kernel to have to
     // tolerate on the overwhelmingly common path.
     if n_blocks == 1 {
-        return eval_fn(&mut a.view(), &b.view());
+        return eval_fn(&mut a.view_mut(), &b.view());
     }
-    (0..n_blocks).try_for_each(|block| call(block, 0, period))
+    a.try_as_plain_ram_mut()?;
+    a.as_bytes_mut()
+        .chunks_mut(period * a_item)
+        .enumerate()
+        .try_for_each(|(block, block_bytes)| call(block, 0, block_bytes))
 }
 
 /// One kernel application inside a [`par_bin_chain`] walk, with `b`, `period`
@@ -434,7 +432,7 @@ pub fn par_bin_chain(steps: &[BinChainStep], a: &mut Tensor) -> TractResult<()> 
         return Ok(());
     }
     let a_len = a.len();
-    let a_item = a.datum_type().size_of() as isize;
+    let a_item = a.datum_type().size_of();
     for s in steps {
         ensure!(
             a_len.is_multiple_of(s.period),
@@ -506,55 +504,44 @@ pub fn par_bin_chain(steps: &[BinChainStep], a: &mut Tensor) -> TractResult<()> 
         }
         return Ok(());
     }
-    let n_chunks = a_len / chunk;
+    let dt = a.datum_type();
     a.try_as_plain_ram_mut()?;
-    let a = &*a;
+    let a_bytes = a.as_bytes_mut();
+    let chunk_bytes = chunk * a_item;
     static STRIDES: [isize; 1] = [1];
     let a_shape = [chunk];
     // `chunk` divides every step's span, so a PerBlock step sees one block per
     // chunk, and a Lockstep step crosses its period boundaries only at
-    // `vector_size()` multiples, where it restarts `b`. The disjoint chunks
-    // partition `a`: concurrent writes through the views do not alias.
-    let call = |ix: usize| -> TractResult<()> {
+    // `vector_size()` multiples, where it restarts `b`.
+    let call = |ix: usize, a_chunk: &mut [u8]| -> TractResult<()> {
         let g = ix * chunk;
-        unsafe {
-            let mut a_chunk = TensorView::from_bytes(a, g as isize * a_item, &a_shape, &STRIDES);
-            for s in steps {
-                let b_item = s.b.datum_type().size_of() as isize;
-                if s.share == BShare::PerBlock {
-                    let b_offset = (g / s.period) as isize * b_item;
-                    let b_chunk = TensorView::from_bytes(s.b, b_offset, &[1], &STRIDES);
-                    (s.eval_fn)(&mut a_chunk, &b_chunk)?;
-                    continue;
-                }
-                let mut pos = 0;
-                while pos < chunk {
-                    let offset = (g + pos) % s.period;
-                    let len = (s.period - offset).min(chunk - pos);
-                    let part_shape = [len];
-                    let mut a_part = TensorView::from_bytes(
-                        a,
-                        (g + pos) as isize * a_item,
-                        &part_shape,
-                        &STRIDES,
-                    );
-                    let b_part = TensorView::from_bytes(
-                        s.b,
-                        offset as isize * b_item,
-                        &part_shape,
-                        &STRIDES,
-                    );
-                    (s.eval_fn)(&mut a_part, &b_part)?;
-                    pos += len;
-                }
+        for s in steps {
+            let b_item = s.b.datum_type().size_of();
+            if s.share == BShare::PerBlock {
+                let mut a_view = TensorViewMut::from_pod_bytes(dt, a_chunk, &a_shape, &STRIDES)?;
+                let b_view = TensorView::from_bytes(s.b, (g / s.period) * b_item, &[1], &STRIDES)?;
+                (s.eval_fn)(&mut a_view, &b_view)?;
+                continue;
             }
-            Ok(())
+            let mut pos = 0;
+            while pos < chunk {
+                let offset = (g + pos) % s.period;
+                let len = (s.period - offset).min(chunk - pos);
+                let part_shape = [len];
+                let a_part = &mut a_chunk[pos * a_item..(pos + len) * a_item];
+                let mut a_view = TensorViewMut::from_pod_bytes(dt, a_part, &part_shape, &STRIDES)?;
+                let b_view = TensorView::from_bytes(s.b, offset * b_item, &part_shape, &STRIDES)?;
+                (s.eval_fn)(&mut a_view, &b_view)?;
+                pos += len;
+            }
         }
+        Ok(())
     };
 
     #[cfg(feature = "multithread-mm")]
     {
         use rayon::prelude::*;
+        let n_chunks = a_len / chunk;
         if a_len >= current_threading_element_threshold() && n_chunks > 1 {
             let executor = current_tract_executor();
             let nth = match &executor {
@@ -564,21 +551,24 @@ pub fn par_bin_chain(steps: &[BinChainStep], a: &mut Tensor) -> TractResult<()> 
             };
             if nth > 1 {
                 let per_worker = n_chunks.div_ceil(nth);
-                let n_workers = n_chunks.div_ceil(per_worker);
-                let run = || {
-                    (0..n_workers).into_par_iter().try_for_each(|w| {
-                        let first = w * per_worker;
-                        (first..(first + per_worker).min(n_chunks)).try_for_each(&call)
-                    })
+                let run = |a_bytes: &mut [u8]| {
+                    a_bytes.par_chunks_mut(per_worker * chunk_bytes).enumerate().try_for_each(
+                        |(w, worker)| {
+                            worker
+                                .chunks_mut(chunk_bytes)
+                                .enumerate()
+                                .try_for_each(|(i, c)| call(w * per_worker + i, c))
+                        },
+                    )
                 };
                 return match executor {
-                    Executor::MultiThread(pool) => pool.install(run),
-                    _ => run(),
+                    Executor::MultiThread(pool) => pool.install(|| run(a_bytes)),
+                    _ => run(a_bytes),
                 };
             }
         }
     }
-    (0..n_chunks).try_for_each(call)
+    a_bytes.chunks_mut(chunk_bytes).enumerate().try_for_each(|(ix, c)| call(ix, c))
 }
 
 // wasi has no thread spawning at all; other wasm targets run the shared rayon
@@ -587,10 +577,10 @@ pub fn par_bin_chain(steps: &[BinChainStep], a: &mut Tensor) -> TractResult<()> 
 mod chain_tests {
     use super::{BShare, BinChainStep, Executor, multithread_tract_scope, par_bin, par_bin_chain};
     use crate::BinFn;
-    use tract_data::internal::{Tensor, TensorView, TractResult};
+    use tract_data::internal::{Tensor, TensorView, TensorViewMut, TractResult};
 
-    fn add() -> impl Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync {
-        |a: &mut TensorView, b: &TensorView| {
+    fn add() -> impl Fn(&mut TensorViewMut, &TensorView) -> TractResult<()> + Send + Sync {
+        |a: &mut TensorViewMut, b: &TensorView| {
             let av = a.as_slice_mut::<f32>()?;
             let bv = b.as_slice::<f32>()?;
             if bv.len() == 1 {
@@ -602,8 +592,8 @@ mod chain_tests {
         }
     }
 
-    fn mul() -> impl Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync {
-        |a: &mut TensorView, b: &TensorView| {
+    fn mul() -> impl Fn(&mut TensorViewMut, &TensorView) -> TractResult<()> + Send + Sync {
+        |a: &mut TensorViewMut, b: &TensorView| {
             let av = a.as_slice_mut::<f32>()?;
             let bv = b.as_slice::<f32>()?;
             if bv.len() == 1 {

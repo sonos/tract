@@ -920,18 +920,16 @@ impl DeviceContext for WgpuContext {
     }
 
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
-        let view = tensor.view();
         ensure!(
-            DeviceTensor::is_supported_dt(view.datum_type()),
+            DeviceTensor::is_supported_dt(tensor.datum_type()),
             "Tensor of {:?} is not copied. No device buffer can be allocated for it.",
-            view.datum_type(),
+            tensor.datum_type(),
         );
-        if let Some(bqs) = view
-            .tensor
+        if let Some(bqs) = tensor
             .storage_as::<BlockQuantStorage>()
             .filter(|bqs| crate::kernels::matmul_bq::bq_format(bqs.format()).is_some())
         {
-            let shape = view.shape();
+            let shape = tensor.shape();
             let (packed, group) = crate::kernels::matmul_bq::repack_weight(
                 bqs.value().as_bytes(),
                 bqs.format(),
@@ -948,20 +946,20 @@ impl DeviceContext for WgpuContext {
             with_wgpu_queue(|q| q.count_upload(packed.len() as u64))?;
             return Ok(Box::new(WgpuTensor {
                 buffer,
-                datum_type: view.datum_type(),
+                datum_type: tensor.datum_type(),
                 shape: shape.into(),
-                strides: view.strides().into(),
+                strides: tensor.strides().into(),
                 exotic_fact: Some(Box::new(fact)),
             }));
         }
-        let data_bytes = view.tensor.as_bytes();
+        let data_bytes = tensor.as_bytes();
         let buffer = Arc::new(self.wrap_storage(self.create_storage_buffer(data_bytes)));
         with_wgpu_queue(|q| q.count_upload(data_bytes.len() as u64))?;
         Ok(Box::new(WgpuTensor {
             buffer,
-            datum_type: view.datum_type(),
-            shape: view.shape().into(),
-            strides: view.strides().into(),
+            datum_type: tensor.datum_type(),
+            shape: tensor.shape().into(),
+            strides: tensor.strides().into(),
             exotic_fact: None,
         }))
     }

@@ -29,7 +29,7 @@ fn qmmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
                         b: AsInputValue::Borrowed(&*pb),
                         packing: 1,
                     },
-                    FusedSpec::Store(mmm.c_view(Some(0), Some(1)).wrap(&c.view_mut())),
+                    FusedSpec::Store(mmm.c_view(Some(0), Some(1)).wrap(&mut c.view_mut())),
                 ],
             )
         });

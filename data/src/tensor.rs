@@ -2257,39 +2257,55 @@ impl Tensor {
         }
     }
 
+    /// A read-only view of the whole tensor. Panics if the storage is not plain.
     #[inline]
     pub fn view(&self) -> view::TensorView<'_> {
-        view::TensorView::view(self)
+        view::TensorView::of_tensor(self)
     }
 
+    /// The sub-tensor at `prefix`: the trailing axes, from the item `prefix` points to.
     #[inline]
     pub fn view_at_prefix(&self, prefix: &[usize]) -> TractResult<view::TensorView<'_>> {
         view::TensorView::at_prefix(self, prefix)
     }
 
-    #[inline]
+    /// A view with the tensor's shape and strides whose origin is moved to `coords`.
     pub fn view_offsetting(&self, coords: &[usize]) -> TractResult<view::TensorView<'_>> {
-        view::TensorView::offsetting(self, coords)
+        ensure!(
+            coords.len() == self.rank() && coords.iter().zip(self.shape()).all(|(p, d)| p < d),
+            "Invalid coords {:?} for shape {:?}",
+            coords,
+            self.shape()
+        );
+        let mut view = self.view();
+        for (axis, &pos) in coords.iter().enumerate() {
+            view.offset_axis(axis, pos)?;
+        }
+        Ok(view)
     }
 
+    /// A mutable view of the whole tensor. Panics if the storage is not plain.
     #[inline]
-    pub unsafe fn view_offsetting_unchecked(&self, coords: &[usize]) -> view::TensorView<'_> {
-        unsafe { view::TensorView::offsetting_unchecked(self, coords) }
+    pub fn view_mut(&mut self) -> view::TensorViewMut<'_> {
+        view::TensorViewMut::of_tensor(self)
     }
 
-    #[inline]
-    pub fn view_mut(&mut self) -> view::TensorView<'_> {
-        view::TensorView::view(self)
-    }
-
-    #[inline]
-    pub fn view_at_prefix_mut(&mut self, prefix: &[usize]) -> TractResult<view::TensorView<'_>> {
-        view::TensorView::at_prefix(self, prefix)
-    }
-
-    #[inline]
-    pub fn view_offsetting_mut(&mut self, coords: &[usize]) -> TractResult<view::TensorView<'_>> {
-        view::TensorView::offsetting(self, coords)
+    /// The mutable counterpart of [`Self::view_offsetting`].
+    pub fn view_offsetting_mut(
+        &mut self,
+        coords: &[usize],
+    ) -> TractResult<view::TensorViewMut<'_>> {
+        ensure!(
+            coords.len() == self.rank() && coords.iter().zip(self.shape()).all(|(p, d)| p < d),
+            "Invalid coords {:?} for shape {:?}",
+            coords,
+            self.shape()
+        );
+        let mut view = self.view_mut();
+        for (axis, &pos) in coords.iter().enumerate() {
+            view.offset_axis(axis, pos)?;
+        }
+        Ok(view)
     }
 
     /// Offsets the tensor as an i8 type if it's an u8 type, otherwise passes it unchanged.

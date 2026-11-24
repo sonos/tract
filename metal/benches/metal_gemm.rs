@@ -49,7 +49,7 @@ pub fn tract_with_packing(
                             a: AsInputValue::Borrowed(&(*packed_a)),
                             b: AsInputValue::Borrowed(&(*packed_b)),
                         },
-                        FusedSpec::Store(c_storage.wrap(&c.view_mut())),
+                        FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
                     ],
                 )
                 .unwrap()

@@ -195,14 +195,12 @@ impl DeviceContext for MetalContext {
 
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
         let tensor = tensor.into_arc_tensor();
-        let view = tensor.view();
         ensure!(
-            DeviceTensor::is_supported_dt(view.datum_type()),
+            DeviceTensor::is_supported_dt(tensor.datum_type()),
             "Tensor of {:?} is not copied. No device buffer can be allocated for it.",
-            view.datum_type(),
+            tensor.datum_type(),
         );
-        let bqs = view
-            .tensor
+        let bqs = tensor
             .storage_as::<BlockQuantStorage>()
             .filter(|bqs| crate::kernels::matmul::ggml_quant(bqs.format()).is_some());
 
@@ -211,11 +209,11 @@ impl DeviceContext for MetalContext {
                 bqs.value().as_bytes(),
                 Some(Box::new(BlockQuantFact::new(
                     tract_core::dyn_clone::clone_box(bqs.format()),
-                    tensor.view().tensor.shape().into(),
+                    tensor.shape().into(),
                 )) as Box<dyn ExoticFact>),
             )
         } else {
-            (view.tensor.as_bytes(), None)
+            (tensor.as_bytes(), None)
         };
 
         // Handle empty data

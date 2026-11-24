@@ -438,7 +438,7 @@ fn bench_shape(
                     if cold { (2 * llc_bytes() / a_bytes).clamp(2, 64) } else { 1 };
                 let a_pool: Vec<_> = (0..copies).map(|_| pa.prepare_one(&a, 1, 0).unwrap()).collect();
                 let b = pb.prepare_one(&b, 0, 1).unwrap();
-                let pc = mmm.c_view(Some(0), Some(1)).wrap(&c.view_mut());
+                let pc = mmm.c_view(Some(0), Some(1)).wrap(&mut c.view_mut());
                 let bench = |loops| {
                     let mut scratch = mmm.allocate_scratch_space();
                     for i in 0..loops {

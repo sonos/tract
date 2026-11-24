@@ -152,7 +152,7 @@ impl ConvProblem {
         let mmm = tract_linalg::MmmDispatch::native()
             .preferred_kernel(F32, Some(m), Some(k), Some(n))
             .unwrap();
-        let output = Tensor::zero::<f32>(&internal_output_shape)?;
+        let mut output = Tensor::zero::<f32>(&internal_output_shape)?;
         let reshaped_filters = self.filters.clone().into_shape(&[k, m])?;
         let (a_pack, b_pack) = &mmm.packings()[0];
         let a = a_pack.prepare_one(&reshaped_filters, 0, 1)?;
@@ -170,7 +170,7 @@ impl ConvProblem {
                 }
                 .wrap(&self.input.view())
             };
-            let c_store = mmm.c_view(Some(0), Some(1)).wrap(&output.view());
+            let c_store = mmm.c_view(Some(0), Some(1)).wrap(&mut output.view_mut());
             mmm.run(
                 m,
                 n,

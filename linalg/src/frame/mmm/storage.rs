@@ -163,37 +163,43 @@ unsafe impl Send for OutputStore {}
 unsafe impl Sync for OutputStore {}
 
 impl OutputStoreSpec {
+    /// A store writing into `tensor`. The pointer outlives the borrow: the caller keeps
+    /// `tensor` alive and otherwise untouched while the store is in use.
     #[inline]
-    pub unsafe fn wrap(&self, tensor: &TensorView) -> OutputStore {
-        let (mr, nr, row_byte_stride, col_byte_stride) = unsafe { self.compute_strides(tensor) };
-        OutputStore {
-            ptr: unsafe { tensor.as_ptr_unchecked::<u8>() } as _,
-            row_byte_stride,
-            col_byte_stride,
-            panel_row_byte_stride: row_byte_stride * mr as isize,
-            panel_col_byte_stride: col_byte_stride * nr as isize,
-            item_size: tensor.datum_type().size_of(),
-            item_count: tensor.len(),
-        }
+    pub unsafe fn wrap(&self, tensor: &mut TensorViewMut) -> OutputStore {
+        let ptr = unsafe { tensor.as_ptr_mut_unchecked::<u8>() };
+        self.store(ptr, tensor.strides(), tensor.datum_type(), tensor.len())
+    }
+
+    /// Like [`Self::wrap`], for an operand the kernel only reads (`AddUnicast`): the
+    /// store must never be the target of a `Store`.
+    #[inline]
+    pub unsafe fn wrap_read(&self, tensor: &TensorView) -> OutputStore {
+        let ptr = unsafe { tensor.as_ptr_unchecked::<u8>() } as *mut u8;
+        self.store(ptr, tensor.strides(), tensor.datum_type(), tensor.len())
     }
 
     #[inline]
-    unsafe fn compute_strides(&self, tensor: &TensorView) -> (usize, usize, isize, isize) {
-        let size_of = tensor.datum_type().size_of() as isize;
-        match self {
+    fn store(&self, ptr: *mut u8, strides: &[isize], dt: DatumType, len: usize) -> OutputStore {
+        let size_of = dt.size_of() as isize;
+        let (mr, nr, row_byte_stride, col_byte_stride) = match self {
             OutputStoreSpec::View { m_axis, n_axis, mr, nr, .. } => {
-                let tensor_strides = tensor.strides();
-                let row_item_stride =
-                    m_axis.map(|ax| *unsafe { tensor_strides.get_unchecked(ax) }).unwrap_or(0);
-                let col_item_stride =
-                    n_axis.map(|ax| *unsafe { tensor_strides.get_unchecked(ax) }).unwrap_or(0);
-                let row_byte_stride = row_item_stride * size_of;
-                let col_byte_stride = col_item_stride * size_of;
-                (*mr, *nr, row_byte_stride, col_byte_stride)
+                let row_item_stride = m_axis.map(|ax| strides[ax]).unwrap_or(0);
+                let col_item_stride = n_axis.map(|ax| strides[ax]).unwrap_or(0);
+                (*mr, *nr, row_item_stride * size_of, col_item_stride * size_of)
             }
             OutputStoreSpec::Strides { row_byte_stride, col_byte_stride, mr, nr, .. } => {
                 (*mr, *nr, *row_byte_stride, *col_byte_stride)
             }
+        };
+        OutputStore {
+            ptr,
+            row_byte_stride,
+            col_byte_stride,
+            panel_row_byte_stride: row_byte_stride * mr as isize,
+            panel_col_byte_stride: col_byte_stride * nr as isize,
+            item_size: dt.size_of(),
+            item_count: len,
         }
     }
 }
@@ -204,8 +210,8 @@ impl OutputStore {
     /// one the store was built from (via [`OutputStoreSpec::wrap`]); the caller
     /// must uphold that. Skips the stride/size recomputation `wrap` performs.
     #[inline]
-    pub unsafe fn with_tensor(&self, tensor: &TensorView) -> OutputStore {
-        OutputStore { ptr: unsafe { tensor.as_ptr_unchecked::<u8>() } as _, ..*self }
+    pub unsafe fn with_tensor(&self, tensor: &mut TensorViewMut) -> OutputStore {
+        OutputStore { ptr: unsafe { tensor.as_ptr_mut_unchecked::<u8>() }, ..*self }
     }
 
     #[inline]

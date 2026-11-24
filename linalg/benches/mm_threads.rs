@@ -80,7 +80,9 @@ fn bench_shape(c: &mut Criterion, dt: DatumType, label: &str, m: usize, k: usize
                                 b: AsInputValue::Borrowed(&*pb),
                                 packing: 0,
                             },
-                            FusedSpec::Store(mmm.c_view(Some(0), Some(1)).wrap(&cbuf.view_mut())),
+                            FusedSpec::Store(
+                                mmm.c_view(Some(0), Some(1)).wrap(&mut cbuf.view_mut()),
+                            ),
                         ],
                     )
                     .unwrap()

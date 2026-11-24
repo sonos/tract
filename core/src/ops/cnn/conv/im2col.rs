@@ -271,7 +271,7 @@ impl Patcher {
         &self,
         geo: &'p ConcreteGeometry,
         input: &TensorView,
-        pack: &'p mut TensorView,
+        pack: &'p mut TensorViewMut,
         g: usize,
         pad_value: Option<&Tensor>,
     ) -> TractResult<()> {

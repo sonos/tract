@@ -811,7 +811,7 @@ mod tests {
                                 b: AsInputValue::Borrowed(&*pb),
                                 packing,
                             },
-                            FusedSpec::Store(mmm.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
+                            FusedSpec::Store(mmm.c_view(Some(0), Some(0)).wrap(&mut c.view_mut())),
                         ],
                     )
                 }
