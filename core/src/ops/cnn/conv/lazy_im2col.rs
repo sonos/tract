@@ -6,11 +6,72 @@ use tract_linalg::WeightType;
 use tract_linalg::mmm::{MMMInputFormat, MMMInputValue, PackedMatrixStorage};
 use tract_linalg::pack::{PackedFormat, PackingWriter};
 
+/// The gather plan of a lazy im2col: value `(k, n)` is read at
+/// `k_byte_offsets[k] + n_byte_offsets[n]` from the convolution input.
+///
+/// A padded convolution reads its unpadded input directly. `axis_tap_masks[ax][o]` then holds,
+/// bit `t` set, the kernel taps whose coordinate along spatial axis `ax` lands inside the input
+/// for output coordinate `o`, the output points `n` running row-major over those axes. A tap is
+/// inside for a point when it is inside along every axis, and row `k` is tap `k % taps`. A tap
+/// outside reads as zero and its offset is never dereferenced. An empty `axis_tap_masks` means
+/// every tap of every point is inside, as for an unpadded input.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct LazyIm2colParams {
     pub packer: PackedFormat,
     pub n_byte_offsets: Vec<isize>,
     pub k_byte_offsets: Vec<isize>,
+    pub taps: usize,
+    pub axis_tap_masks: Vec<Vec<u64>>,
+    /// Per spatial axis, the output coordinates whose every tap is inside along that axis.
+    pub axis_interior: Vec<Range<usize>>,
+}
+
+impl LazyIm2colParams {
+    /// Whether every tap of every point of `n_range` is inside the input, answered from the
+    /// first point's coordinates when the range stays within one run of the last axis.
+    fn interior(&self, n_range: Range<usize>) -> bool {
+        let Some((last, outer)) = self.axis_tap_masks.split_last() else { return true };
+        let mut rest = n_range.start / last.len();
+        let first = n_range.start % last.len();
+        for (axis, inside) in outer.iter().zip(&self.axis_interior).rev() {
+            if !inside.contains(&(rest % axis.len())) {
+                return false;
+            }
+            rest /= axis.len();
+        }
+        let inside = self.axis_interior.last().unwrap();
+        inside.start <= first && first + n_range.len() <= inside.end
+    }
+}
+
+/// The tap masks of output points `n_range`, one per point into `masks`, from the per-axis
+/// masks of [`LazyIm2colParams::axis_tap_masks`]; whether one of the points misses a tap.
+pub(crate) fn point_tap_masks(
+    axis_tap_masks: &[Vec<u64>],
+    taps: usize,
+    n_range: Range<usize>,
+    masks: &mut [u64],
+) -> bool {
+    let all = u64::MAX >> (64 - taps);
+    let mut coords = [0usize; 8];
+    let mut rest = n_range.start;
+    for (ax, axis) in axis_tap_masks.iter().enumerate().rev() {
+        coords[ax] = rest % axis.len();
+        rest /= axis.len();
+    }
+    let mut border = false;
+    for mask in masks.iter_mut().take(n_range.len()) {
+        *mask = axis_tap_masks.iter().zip(&coords).fold(all, |m, (axis, &c)| m & axis[c]);
+        border |= *mask != all;
+        for (ax, axis) in axis_tap_masks.iter().enumerate().rev() {
+            coords[ax] += 1;
+            if coords[ax] < axis.len() {
+                break;
+            }
+            coords[ax] = 0;
+        }
+    }
+    border
 }
 
 impl MMMInputFormat for LazyIm2colParams {
@@ -183,15 +244,15 @@ impl LazyIm2colInput {
             let o7 = *n_byte_offsets.offset(n + 6);
             let o8 = *n_byte_offsets.offset(n + 7);
             for k in k_range.start..k_range.end {
-                let ptr = ptr.offset(*k_byte_offsets.offset(k));
-                let v1 = *(ptr.offset(o1) as *const T);
-                let v2 = *(ptr.offset(o2) as *const T);
-                let v3 = *(ptr.offset(o3) as *const T);
-                let v4 = *(ptr.offset(o4) as *const T);
-                let v5 = *(ptr.offset(o5) as *const T);
-                let v6 = *(ptr.offset(o6) as *const T);
-                let v7 = *(ptr.offset(o7) as *const T);
-                let v8 = *(ptr.offset(o8) as *const T);
+                let ptr = ptr.wrapping_offset(*k_byte_offsets.offset(k));
+                let v1 = *(ptr.wrapping_offset(o1) as *const T);
+                let v2 = *(ptr.wrapping_offset(o2) as *const T);
+                let v3 = *(ptr.wrapping_offset(o3) as *const T);
+                let v4 = *(ptr.wrapping_offset(o4) as *const T);
+                let v5 = *(ptr.wrapping_offset(o5) as *const T);
+                let v6 = *(ptr.wrapping_offset(o6) as *const T);
+                let v7 = *(ptr.wrapping_offset(o7) as *const T);
+                let v8 = *(ptr.wrapping_offset(o8) as *const T);
                 writer.write(v1);
                 writer.write(v2);
                 writer.write(v3);
@@ -221,13 +282,13 @@ impl LazyIm2colInput {
             let o5 = *n_byte_offsets.offset(n + 4);
             let o6 = *n_byte_offsets.offset(n + 5);
             for k in k_range.start..k_range.end {
-                let ptr = ptr.offset(*k_byte_offsets.offset(k));
-                let v1 = *(ptr.offset(o1) as *const T);
-                let v2 = *(ptr.offset(o2) as *const T);
-                let v3 = *(ptr.offset(o3) as *const T);
-                let v4 = *(ptr.offset(o4) as *const T);
-                let v5 = *(ptr.offset(o5) as *const T);
-                let v6 = *(ptr.offset(o6) as *const T);
+                let ptr = ptr.wrapping_offset(*k_byte_offsets.offset(k));
+                let v1 = *(ptr.wrapping_offset(o1) as *const T);
+                let v2 = *(ptr.wrapping_offset(o2) as *const T);
+                let v3 = *(ptr.wrapping_offset(o3) as *const T);
+                let v4 = *(ptr.wrapping_offset(o4) as *const T);
+                let v5 = *(ptr.wrapping_offset(o5) as *const T);
+                let v6 = *(ptr.wrapping_offset(o6) as *const T);
                 writer.write(v1);
                 writer.write(v2);
                 writer.write(v3);
@@ -253,11 +314,11 @@ impl LazyIm2colInput {
             let o3 = *n_byte_offsets.offset(n + 2);
             let o4 = *n_byte_offsets.offset(n + 3);
             for k in k_range.start..k_range.end {
-                let ptr = ptr.offset(*k_byte_offsets.offset(k));
-                let v1 = *(ptr.offset(o1) as *const T);
-                let v2 = *(ptr.offset(o2) as *const T);
-                let v3 = *(ptr.offset(o3) as *const T);
-                let v4 = *(ptr.offset(o4) as *const T);
+                let ptr = ptr.wrapping_offset(*k_byte_offsets.offset(k));
+                let v1 = *(ptr.wrapping_offset(o1) as *const T);
+                let v2 = *(ptr.wrapping_offset(o2) as *const T);
+                let v3 = *(ptr.wrapping_offset(o3) as *const T);
+                let v4 = *(ptr.wrapping_offset(o4) as *const T);
                 writer.write(v1);
                 writer.write(v2);
                 writer.write(v3);
@@ -279,9 +340,9 @@ impl LazyIm2colInput {
             let o1 = *n_byte_offsets.offset(n);
             let o2 = *n_byte_offsets.offset(n + 1);
             for k in k_range.start..k_range.end {
-                let ptr = ptr.offset(*k_byte_offsets.offset(k));
-                let v1 = *(ptr.offset(o1) as *const T);
-                let v2 = *(ptr.offset(o2) as *const T);
+                let ptr = ptr.wrapping_offset(*k_byte_offsets.offset(k));
+                let v1 = *(ptr.wrapping_offset(o1) as *const T);
+                let v2 = *(ptr.wrapping_offset(o2) as *const T);
                 writer.write(v1);
                 writer.write(v2);
             }
@@ -296,6 +357,16 @@ impl LazyIm2colInput {
     ) {
         let mn_end = mn_range.end.min(self.im2col.n_byte_offsets.len() as isize);
         let n_range = mn_range.start..mn_end;
+        if !self.im2col.axis_tap_masks.is_empty()
+            && !self.im2col.interior(n_range.start as usize..n_range.end as usize)
+        {
+            let mut masks = [0u64; 64];
+            let masks = &mut masks[..n_range.len()];
+            let points = n_range.start as usize..n_range.end as usize;
+            if point_tap_masks(&self.im2col.axis_tap_masks, self.im2col.taps, points, masks) {
+                return self.input_checked(writer, k_range, n_range, masks);
+            }
+        }
         match n_range.len() {
             8 => return self.input_8n(writer, k_range, n_range.start),
             6 => return self.input_6n(writer, k_range, n_range.start),
@@ -308,7 +379,7 @@ impl LazyIm2colInput {
             let k_byte_offsets = self.im2col.k_byte_offsets.as_ptr();
             let n_byte_offsets = self.im2col.n_byte_offsets.as_ptr();
             for k in k_range.start..k_range.end {
-                let ptr = ptr.offset(*k_byte_offsets.offset(k));
+                let ptr = ptr.wrapping_offset(*k_byte_offsets.offset(k));
                 let mut n = n_range.start;
                 while n + 8 <= n_range.end {
                     let o1 = *n_byte_offsets.offset(n);
@@ -319,14 +390,14 @@ impl LazyIm2colInput {
                     let o6 = *n_byte_offsets.offset(n + 5);
                     let o7 = *n_byte_offsets.offset(n + 6);
                     let o8 = *n_byte_offsets.offset(n + 7);
-                    let v1 = *(ptr.offset(o1) as *const T);
-                    let v2 = *(ptr.offset(o2) as *const T);
-                    let v3 = *(ptr.offset(o3) as *const T);
-                    let v4 = *(ptr.offset(o4) as *const T);
-                    let v5 = *(ptr.offset(o5) as *const T);
-                    let v6 = *(ptr.offset(o6) as *const T);
-                    let v7 = *(ptr.offset(o7) as *const T);
-                    let v8 = *(ptr.offset(o8) as *const T);
+                    let v1 = *(ptr.wrapping_offset(o1) as *const T);
+                    let v2 = *(ptr.wrapping_offset(o2) as *const T);
+                    let v3 = *(ptr.wrapping_offset(o3) as *const T);
+                    let v4 = *(ptr.wrapping_offset(o4) as *const T);
+                    let v5 = *(ptr.wrapping_offset(o5) as *const T);
+                    let v6 = *(ptr.wrapping_offset(o6) as *const T);
+                    let v7 = *(ptr.wrapping_offset(o7) as *const T);
+                    let v8 = *(ptr.wrapping_offset(o8) as *const T);
                     writer.write(v1);
                     writer.write(v2);
                     writer.write(v3);
@@ -344,12 +415,12 @@ impl LazyIm2colInput {
                     let o4 = *n_byte_offsets.offset(n + 3);
                     let o5 = *n_byte_offsets.offset(n + 4);
                     let o6 = *n_byte_offsets.offset(n + 5);
-                    let v1 = *(ptr.offset(o1) as *const T);
-                    let v2 = *(ptr.offset(o2) as *const T);
-                    let v3 = *(ptr.offset(o3) as *const T);
-                    let v4 = *(ptr.offset(o4) as *const T);
-                    let v5 = *(ptr.offset(o5) as *const T);
-                    let v6 = *(ptr.offset(o6) as *const T);
+                    let v1 = *(ptr.wrapping_offset(o1) as *const T);
+                    let v2 = *(ptr.wrapping_offset(o2) as *const T);
+                    let v3 = *(ptr.wrapping_offset(o3) as *const T);
+                    let v4 = *(ptr.wrapping_offset(o4) as *const T);
+                    let v5 = *(ptr.wrapping_offset(o5) as *const T);
+                    let v6 = *(ptr.wrapping_offset(o6) as *const T);
                     writer.write(v1);
                     writer.write(v2);
                     writer.write(v3);
@@ -363,10 +434,10 @@ impl LazyIm2colInput {
                     let o2 = *n_byte_offsets.offset(n + 1);
                     let o3 = *n_byte_offsets.offset(n + 2);
                     let o4 = *n_byte_offsets.offset(n + 3);
-                    let v1 = *(ptr.offset(o1) as *const T);
-                    let v2 = *(ptr.offset(o2) as *const T);
-                    let v3 = *(ptr.offset(o3) as *const T);
-                    let v4 = *(ptr.offset(o4) as *const T);
+                    let v1 = *(ptr.wrapping_offset(o1) as *const T);
+                    let v2 = *(ptr.wrapping_offset(o2) as *const T);
+                    let v3 = *(ptr.wrapping_offset(o3) as *const T);
+                    let v4 = *(ptr.wrapping_offset(o4) as *const T);
                     writer.write(v1);
                     writer.write(v2);
                     writer.write(v3);
@@ -375,9 +446,75 @@ impl LazyIm2colInput {
                 }
                 while n < n_range.end {
                     let o1 = *n_byte_offsets.offset(n);
-                    let v1 = *(ptr.offset(o1) as *const T);
+                    let v1 = *(ptr.wrapping_offset(o1) as *const T);
                     writer.write(v1);
                     n += 1;
+                }
+            }
+        }
+    }
+}
+
+impl LazyIm2colInput {
+    /// The gather of a border panel: a tap outside the input writes zero. Most taps of a border
+    /// panel are inside the input for all of its points, so each tap's points are summed up
+    /// once and a fully inside tap row gathers without a per-element check.
+    fn input_checked<T: Datum + Copy>(
+        &self,
+        writer: &mut impl PackingWriter<T>,
+        k_range: Range<isize>,
+        n_range: Range<isize>,
+        masks: &[u64],
+    ) {
+        let taps = self.im2col.taps;
+        let n_offsets = &self.im2col.n_byte_offsets[n_range.start as usize..n_range.end as usize];
+        let mut tap_inside = [true; 64];
+        for (t, inside) in tap_inside.iter_mut().enumerate().take(taps) {
+            *inside = masks.iter().all(|m| m & (1 << t) != 0);
+        }
+        unsafe {
+            let ptr = self.tensor.as_ptr_unchecked::<u8>().offset(self.group_offset_bytes);
+            for k in k_range {
+                let t = k as usize % taps;
+                let ptr =
+                    ptr.wrapping_offset(*self.im2col.k_byte_offsets.get_unchecked(k as usize));
+                if tap_inside[t] {
+                    let (chunks, rest) = n_offsets.as_chunks::<8>();
+                    for chunk in chunks {
+                        let v: [T; 8] =
+                            std::array::from_fn(|i| *(ptr.wrapping_offset(chunk[i]) as *const T));
+                        for v in v {
+                            writer.write(v);
+                        }
+                    }
+                    for offset in rest {
+                        writer.write(*(ptr.wrapping_offset(*offset) as *const T));
+                    }
+                } else {
+                    // An outside lane reads the zero below instead of its own address, so the
+                    // row keeps the branchless gather.
+                    let bit = 1u64 << t;
+                    let zero = T::default();
+                    let zero = &zero as *const T;
+                    let at = |i: usize| {
+                        if masks[i] & bit != 0 {
+                            ptr.wrapping_offset(n_offsets[i]) as *const T
+                        } else {
+                            zero
+                        }
+                    };
+                    let mut i = 0;
+                    while i + 8 <= n_offsets.len() {
+                        let v: [T; 8] = std::array::from_fn(|j| *at(i + j));
+                        for v in v {
+                            writer.write(v);
+                        }
+                        i += 8;
+                    }
+                    while i < n_offsets.len() {
+                        writer.write(*at(i));
+                        i += 1;
+                    }
                 }
             }
         }

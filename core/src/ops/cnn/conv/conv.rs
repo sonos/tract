@@ -11,6 +11,7 @@ use crate::ops::array::PadMode;
 use crate::ops::binary::TypedBinOp;
 use crate::ops::cast::cast;
 use crate::ops::cnn::PaddingSpec::*;
+use crate::ops::cnn::Patch;
 use crate::ops::cnn::conv::block_quant::{BlockQuantIntoShape, SplitGroupBlockQuant};
 use crate::ops::cnn::conv::lazy_im2col::LazyIm2Col;
 use crate::ops::cnn::conv::lazy_im2col::LazyIm2colParams;
@@ -459,7 +460,18 @@ impl Conv {
         let mut geo = geo.to_concrete(&input_shape)?.into_owned();
         let mut input_shape: DataShape = self.pool_spec.data_format.shape(input_shape.into())?;
         let padding = self.pool_spec.computed_padding(input_shape.hw_dims());
-        if padding.iter().any(|axis| axis.pad_before != 0 || axis.pad_after != 0) {
+        let padded = padding.iter().any(|axis| axis.pad_before != 0 || axis.pad_after != 0);
+        let taps = geo.patch.standard_layout_data_field.len();
+        let r = mmm.packings()[packing].1.r();
+        let axis_tap_masks = if padded && taps <= 64 && r <= 64 && !x_fact.datum_type.is_quantized()
+        {
+            let masks = axis_tap_masks(&geo.patch);
+            Some(masks).filter(|masks| mostly_interior(masks, taps, r))
+        } else {
+            None
+        };
+        let masked = axis_tap_masks.is_some();
+        if padded && !masked {
             let mut pads = vec![(0, 0); x_fact.rank()];
             for (ix, ax) in padding.iter().enumerate() {
                 pads[input_shape.h_axis() + ix] = (ax.pad_before, ax.pad_after);
@@ -508,7 +520,24 @@ impl Conv {
                 )
             })?
             .clone();
-        let params = LazyIm2colParams { packer, n_byte_offsets, k_byte_offsets };
+        let axis_tap_masks = axis_tap_masks.unwrap_or_default();
+        let all = u64::MAX >> (64 - taps.clamp(1, 64));
+        let axis_interior = axis_tap_masks
+            .iter()
+            .map(|axis| {
+                let start = axis.iter().position(|m| *m == all).unwrap_or(axis.len());
+                let end = axis.iter().rposition(|m| *m == all).map_or(start, |e| e + 1);
+                start..end.max(start)
+            })
+            .collect();
+        let params = LazyIm2colParams {
+            packer,
+            n_byte_offsets,
+            k_byte_offsets,
+            taps,
+            axis_tap_masks,
+            axis_interior,
+        };
         let x = model.wire_node(
             format!("{name}.lazyIm2col"),
             LazyIm2Col { params: Arc::new(params), group: self.group, group_stride_bytes },
@@ -1460,6 +1489,42 @@ impl TypedOp for Conv {
     as_op!();
 }
 
+/// Per spatial axis and output coordinate along it, the kernel taps whose input coordinate on
+/// that axis lands inside the unpadded input, tap `t` as bit `t`. At most 64 taps.
+fn axis_tap_masks(patch: &Patch) -> Vec<Vec<u64>> {
+    let input = &patch.spec.input_shape;
+    let strides = &patch.spec.strides;
+    (0..patch.output_shape.len())
+        .map(|ax| {
+            (0..patch.output_shape[ax])
+                .map(|o| {
+                    patch.data_field.outer_iter().enumerate().fold(0u64, |mask, (t, rel)| {
+                        let at = (o * strides[ax]) as isize + rel[ax];
+                        mask | (((at >= 0 && at < input[ax] as isize) as u64) << t)
+                    })
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// Whether at most a quarter of the `r`-wide panels over the output points of `axis_tap_masks`
+/// have a point with a tap outside the input. Border panels take a checked gather, so a small
+/// feature map, all border, gathers faster from a padded copy, which is cheap at that size.
+fn mostly_interior(axis_tap_masks: &[Vec<u64>], taps: usize, r: usize) -> bool {
+    use crate::ops::cnn::conv::lazy_im2col::point_tap_masks;
+    let points: usize = axis_tap_masks.iter().map(|axis| axis.len()).product();
+    let mut masks = vec![0u64; r];
+    let panels = points.div_ceil(r);
+    let border = (0..panels)
+        .filter(|p| {
+            let range = p * r..((p + 1) * r).min(points);
+            point_tap_masks(axis_tap_masks, taps, range.clone(), &mut masks[..range.len()])
+        })
+        .count();
+    border * 4 <= panels
+}
+
 /// Default minimum kernel volume for picking LazyIm2col over eager Im2col.
 ///
 /// LazyIm2col has per-output-position gather indirection overhead; eager Im2col has
@@ -1681,6 +1746,103 @@ mod test {
         let n: usize = shape.iter().product();
         let data: Vec<f32> = (0..n).map(|i| f(i)).collect();
         Tensor::from_shape(shape, &data).unwrap()
+    }
+
+    /// A padded NCHW conv run by lazy im2col matches a naive convolution, border panels and
+    /// row-straddling panels included. `unpadded` asserts it reads its input without a Pad,
+    /// which holds for maps wide enough that border panels stay rare at any panel width.
+    #[allow(clippy::too_many_arguments)]
+    fn check_padded_lazy(
+        unpadded: bool,
+        (ic, h, w): (usize, usize, usize),
+        oc: usize,
+        (kh, kw): (usize, usize),
+        padding: crate::ops::cnn::PaddingSpec,
+        stride: usize,
+        dilation: usize,
+        group: usize,
+    ) -> TractResult<()> {
+        let input = filled(&[1, ic, h, w], |i| ((i * 7 % 23) as f32 - 11.0) * 0.1);
+        let kernel = filled(&[oc, ic / group, kh, kw], |i| ((i * 5 % 13) as f32 - 6.0) * 0.1);
+        let spatial = Some(tvec![stride, stride]);
+        let dils = Some(tvec![dilation, dilation]);
+        let (model, got) = run_lazy(
+            NCHW,
+            &input,
+            &kernel,
+            padding.clone(),
+            spatial.clone(),
+            dils.clone(),
+            group,
+            ic,
+            oc,
+            tvec![kh, kw],
+        )?;
+        assert!(
+            model.nodes().iter().any(|n| n.op_is::<LazyIm2Col>()),
+            "{ic}x{h}x{w} k{kh}x{kw} s{stride} g{group}: not run by lazy im2col"
+        );
+        if unpadded {
+            assert!(!model.nodes().iter().any(|n| n.op_is::<crate::ops::array::Pad>()), "padded");
+        }
+        let spec = PoolSpec {
+            data_format: NCHW,
+            kernel_shape: tvec![kh, kw],
+            padding,
+            dilations: dils,
+            strides: spatial,
+            input_channels: ic,
+            output_channels: oc,
+        };
+        let dims = spec.computed_padding(&[h, w]);
+        let (oh, ow) = (dims[0].convoluted, dims[1].convoluted);
+        let (ph, pw) = (dims[0].pad_before as isize, dims[1].pad_before as isize);
+        let x = input.to_plain_array_view::<f32>()?;
+        let k = kernel.to_plain_array_view::<f32>()?;
+        let (icg, ocg) = (ic / group, oc / group);
+        let mut want = vec![0f32; oc * oh * ow];
+        for o in 0..oc {
+            for oy in 0..oh {
+                for ox in 0..ow {
+                    let mut sum = 0f32;
+                    for c in 0..icg {
+                        for ky in 0..kh {
+                            for kx in 0..kw {
+                                let y = (oy * stride + ky * dilation) as isize - ph;
+                                let xx = (ox * stride + kx * dilation) as isize - pw;
+                                if y >= 0 && y < h as isize && xx >= 0 && xx < w as isize {
+                                    let ci = o / ocg * icg + c;
+                                    sum += x[[0, ci, y as usize, xx as usize]] * k[[o, c, ky, kx]];
+                                }
+                            }
+                        }
+                    }
+                    want[(o * oh + oy) * ow + ox] = sum;
+                }
+            }
+        }
+        let want = Tensor::from_shape(&[1, oc, oh, ow], &want)?;
+        got.close_enough(&want, Approximation::Approximate)
+    }
+
+    #[test]
+    fn padded_lazy_im2col_reads_unpadded_input() -> TractResult<()> {
+        use crate::ops::cnn::PaddingSpec::*;
+        // Eight or more input channels keep the 3x3 cases off the direct spatial path.
+        let pad1 = || Explicit(tvec![1, 1], tvec![1, 1]);
+        let asym = || Explicit(tvec![2, 0], tvec![0, 1]);
+        check_padded_lazy(true, (8, 24, 256), 5, (3, 3), SameUpper, 1, 1, 1)?;
+        check_padded_lazy(true, (8, 24, 256), 4, (3, 3), pad1(), 2, 1, 1)?;
+        check_padded_lazy(true, (8, 33, 513), 4, (3, 3), pad1(), 2, 1, 1)?;
+        check_padded_lazy(true, (3, 64, 256), 3, (5, 5), SameUpper, 1, 2, 1)?;
+        check_padded_lazy(true, (4, 24, 256), 6, (3, 3), pad1(), 1, 1, 2)?;
+        check_padded_lazy(true, (8, 24, 256), 4, (3, 3), asym(), 1, 1, 1)?;
+        check_padded_lazy(true, (2, 64, 256), 3, (7, 7), SameUpper, 1, 1, 1)?;
+        check_padded_lazy(false, (5, 20, 20), 7, (3, 3), SameUpper, 1, 1, 1)?;
+        check_padded_lazy(false, (4, 15, 17), 6, (3, 3), pad1(), 2, 1, 1)?;
+        check_padded_lazy(false, (4, 12, 9), 6, (3, 3), pad1(), 1, 1, 2)?;
+        check_padded_lazy(false, (2, 20, 20), 3, (9, 9), SameUpper, 1, 1, 1)?;
+        Ok(())
     }
 
     fn run_lazy(
