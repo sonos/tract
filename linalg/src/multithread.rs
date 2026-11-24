@@ -679,8 +679,8 @@ mod chain_tests {
                     let pool = Executor::multithread(nth);
                     multithread_tract_scope(pool, || par_bin_chain(&steps, &mut a).unwrap());
                 }
-                let got = a.view().as_slice::<f32>().unwrap();
-                let want = reference.view().as_slice::<f32>().unwrap();
+                let got = a.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap();
+                let want = reference.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap();
                 assert_eq!(got, want, "len={len} periods={periods:?} nth={nth}");
             }
         }
