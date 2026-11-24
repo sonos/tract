@@ -2,6 +2,7 @@ mod add_matmul_broadcast;
 mod conv_nhwc;
 mod fold_gdn_beta_sigmoid;
 mod fuse_axis_op;
+mod fuse_window_into_gemm;
 mod untranspose_matmul_output;
 
 pub use add_matmul_broadcast::add_broadcast_pre_matmul;
@@ -10,4 +11,5 @@ pub use conv_nhwc::rewrite_conv_1d_for_nhwc;
 pub use conv_nhwc::rewrite_conv_to_nhwc;
 pub use fold_gdn_beta_sigmoid::fold_gdn_beta_sigmoid;
 pub use fuse_axis_op::{fuse_axis_op, fuse_move_axis};
+pub use fuse_window_into_gemm::fuse_window_into_gemm;
 pub use untranspose_matmul_output::untranspose_matmul_output;
