@@ -68,6 +68,8 @@ pub struct SubgroupCaps {
     pub matrix: bool,
     pub f32_tile: Option<MatrixTile>,
     pub f16_tile: Option<MatrixTile>,
+    /// Tile that multiplies `f16` operands into an `f32` accumulator.
+    pub f16_mixed_tile: Option<MatrixTile>,
     /// Subgroup size the kernels actually use. `min == max`, or the one size
     /// a probe observed. Zero when the size is still a range.
     pub fixed_size: u32,
@@ -152,6 +154,21 @@ fn larger_tile(candidate: MatrixTile, best: Option<MatrixTile>) -> Option<Matrix
     }
 }
 
+/// The 8x8 tile that multiplies `f16` operands into an `f32` accumulator.
+pub(crate) fn pick_native_mixed_tile(
+    props: &[wgpu::CooperativeMatrixProperties],
+) -> Option<MatrixTile> {
+    props
+        .iter()
+        .find(|p| {
+            !p.saturating_accumulation
+                && p.ab_type == wgpu::CooperativeScalarType::F16
+                && p.cr_type == wgpu::CooperativeScalarType::F32
+                && (p.m_size, p.n_size, p.k_size) == (8, 8, 8)
+        })
+        .map(|p| MatrixTile { m: p.m_size, n: p.n_size, k: p.k_size })
+}
+
 /// Largest square 8 or 16 tile whose inputs and result share `scalar`,
 /// without saturating accumulation. Naga parses only those two shapes.
 pub(crate) fn pick_native_tile(
@@ -228,6 +245,7 @@ pub fn caps_from_native(
         caps.f32_tile = pick_native_tile(&props, wgpu::CooperativeScalarType::F32);
         if shader_f16 {
             caps.f16_tile = pick_native_tile(&props, wgpu::CooperativeScalarType::F16);
+            caps.f16_mixed_tile = pick_native_mixed_tile(&props);
         }
     }
     caps
@@ -771,11 +789,11 @@ fn cover_block(
     best
 }
 
-fn knob_on(caps: &SubgroupCaps) -> bool {
+pub(crate) fn knob_on(caps: &SubgroupCaps) -> bool {
     caps.subgroups && TRACT_WGPU_SUBGROUPS.get()
 }
 
-fn limits_of(q: &WgpuQueue) -> (u32, u32) {
+pub(crate) fn limits_of(q: &WgpuQueue) -> (u32, u32) {
     let limits = q.context().device().limits();
     (limits.max_compute_invocations_per_workgroup, limits.max_compute_workgroup_size_x)
 }
@@ -801,7 +819,7 @@ fn gemv_plan(
     Some(GemvPlan { size: choice.size, cols, pin: choice.pin, varying: false })
 }
 
-fn stride_pair(tensor: &DeviceTensor, transpose: bool) -> (isize, isize) {
+pub(crate) fn stride_pair(tensor: &DeviceTensor, transpose: bool) -> (isize, isize) {
     let rank = tensor.rank();
     let row = tensor.strides()[rank - if transpose { 1 } else { 2 }];
     let col = tensor.strides()[rank - if transpose { 2 } else { 1 }];
@@ -885,7 +903,7 @@ fn matrix_plan(
     })
 }
 
-fn enables(dt: ShaderDtype, matrix: bool, pin: bool) -> String {
+pub(crate) fn enables(dt: ShaderDtype, matrix: bool, pin: bool) -> String {
     let mut lines = Vec::new();
     #[cfg(target_arch = "wasm32")]
     {
@@ -910,7 +928,7 @@ fn enables(dt: ShaderDtype, matrix: bool, pin: bool) -> String {
     if lines.is_empty() { String::new() } else { format!("{}\n", lines.join("\n")) }
 }
 
-fn bindings(dt: ShaderDtype, extras: usize) -> String {
+pub(crate) fn bindings(dt: ShaderDtype, extras: usize, a_type: &str, b_type: &str) -> String {
     let t = dt.wgsl();
     let out_binding = 2 + extras;
     let uniform_binding = 3 + extras;
@@ -945,13 +963,18 @@ fn bindings(dt: ShaderDtype, extras: usize) -> String {
     mode_extra: vec4<u32>,
 }}
 
-@group(0) @binding(0) var<storage, read> a: array<{t}>;
-@group(0) @binding(1) var<storage, read> b: array<{t}>;
+@group(0) @binding(0) var<storage, read> a: {a_type};
+@group(0) @binding(1) var<storage, read> b: {b_type};
 {extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
 {AT8}
 "#
     )
+}
+
+fn flat_bindings(dt: ShaderDtype, extras: usize) -> String {
+    let flat = format!("array<{}>", dt.wgsl());
+    bindings(dt, extras, &flat, &flat)
 }
 
 const PREFIX_DECODE: &str = r#"    var a_i = params.off_a;
@@ -992,7 +1015,7 @@ pub(crate) fn gemv_shader(
     let wg = cols * size;
     let attr = pin_attr(pin, size);
     let mut source = enables(dt, false, pin);
-    source.push_str(&bindings(dt, extras));
+    source.push_str(&flat_bindings(dt, extras));
     let sg_param = if varying { ", @builtin(subgroup_size) sg_size: u32" } else { "" };
     source.push_str(&format!(
         "{attr}@compute @workgroup_size({wg}) fn matmul_gemv_sg_{suf}(@builtin(subgroup_invocation_id) lane: u32, @builtin(subgroup_id) sg: u32, @builtin(workgroup_id) wid: vec3<u32>{sg_param}) {{\n"
@@ -1363,7 +1386,7 @@ pub(crate) fn matrix_shader(
     }
     builtins.push("@builtin(workgroup_id) wid: vec3<u32>");
     let mut source = enables(dt, true, pin);
-    source.push_str(&bindings(dt, extras));
+    source.push_str(&flat_bindings(dt, extras));
     if stage {
         let stage_len = sg_m
             .checked_mul(sg_n)?
@@ -1458,6 +1481,12 @@ pub fn try_dispatch(
 ) -> TractResult<bool> {
     if prefix == 0 || n == 0 || k == 0 {
         return Ok(false);
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    if crate::kernels::coop_gemm::try_dispatch(
+        q, t, epilogue, a, b, extras, output, dt, m, k, n, prefix, out_shape,
+    )? {
+        return Ok(true);
     }
     let caps = *q.context().subgroup_caps();
     let (max_inv, max_x) = limits_of(q);
@@ -1660,7 +1689,7 @@ pub fn try_dispatch(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn dispatch_groups(
+pub(crate) fn dispatch_groups(
     q: &WgpuQueue,
     label: &'static str,
     pipeline: &std::sync::Arc<wgpu::ComputePipeline>,
@@ -2232,7 +2261,8 @@ mod tests {
     }
 
     /// 48×256×256 takes the same 2×2 four-subgroup block as MODNet 144 and is
-    /// past both gates, so the dispatch is the unrolled `matmul_sgemm`. The
+    /// past both gates, so the dispatch is the unrolled `matmul_sgemm`. Batched,
+    /// because a single product of this layout takes the cooperative GEMM. The
     /// values are an f16 dot plus the bias column.
     fn biased_block_matches_cpu() -> TractResult<()> {
         use tract_gpu::tensor::IntoDevice;
@@ -2249,12 +2279,14 @@ mod tests {
         let a_h = pack(11, k * m);
         let b_h = pack(12, n * k);
         let bias_h = pack(13, n);
-        let a = Tensor::from_shape(&[k, m], &a_h)?.into_device()?;
-        let b = Tensor::from_shape(&[n, k], &b_h)?.into_device()?;
+        let a =
+            Tensor::from_shape(&[2, k, m], &[a_h.clone(), a_h.clone()].concat())?.into_device()?;
+        let b =
+            Tensor::from_shape(&[2, n, k], &[b_h.clone(), b_h.clone()].concat())?.into_device()?;
         let bias = Tensor::from_shape(&[n], &bias_h)?.into_device()?;
         let extras = [&bias];
         let epilogue = [ChainStep::Binary { op: "add".into(), rhs: 1, swapped: false }];
-        let output = DeviceTensor::uninitialized_dt(f16::datum_type(), &[n, m])?;
+        let output = DeviceTensor::uninitialized_dt(f16::datum_type(), &[2, n, m])?;
         crate::set_dispatch_capture(true);
         let _ = crate::take_dispatch_labels();
         crate::kernels::matmul::wgpu_matmul_dispatch(
@@ -2278,7 +2310,10 @@ mod tests {
                     acc += a_h[ki * m + mi] * b_h[ni * k + ki];
                 }
                 acc += bias_h[ni];
-                worst = worst.max((got[ni * m + mi].to_f32() - acc.to_f32()).abs());
+                for batch in 0..2 {
+                    let have = got[(batch * n + ni) * m + mi].to_f32();
+                    worst = worst.max((have - acc.to_f32()).abs());
+                }
             }
         }
         let shown = labels.join(" ");

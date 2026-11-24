@@ -6,6 +6,8 @@ pub mod chain;
 pub mod compare_select;
 pub mod conv;
 pub mod conv_splitk;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod coop_gemm;
 pub mod copy;
 pub mod deconv;
 pub mod diag_gather;
@@ -61,7 +63,8 @@ tract_core::declare_knob!(
     "Experimental subgroup GEMV and subgroup-matrix GEMM. Off by default. Read when the device \
      is created, so a device opened without it cannot use the feature later, and read again at \
      dispatch. Sizes and tiles come from the adapter: Chrome, Dawn, native wgpu, and WebKit each \
-     advertise a different set. f16 matrix tiles also require TRACT_WGPU_ALLOW_F16_ACCUMULATION."
+     advertise a different set. f16 matrix tiles that accumulate in f16 also require \
+     TRACT_WGPU_ALLOW_F16_ACCUMULATION."
 );
 
 tract_core::declare_knob!(
