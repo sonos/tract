@@ -3,6 +3,7 @@ from pathlib import Path
 import shlex
 import struct
 import subprocess
+import sys
 import tempfile
 import zipfile
 
@@ -61,9 +62,12 @@ with tempfile.TemporaryDirectory() as temporary:
                 symbols = ["--set", f"S={query_len}", "--set", f"T={key_len}"]
                 common = cli + [str(root), "--opl"] + ([] if symbolic else symbols)
                 run = ["run"] + (symbols if symbolic else []) + ["--input-from-npz", str(inputs)]
-                print(f"{dtype} S={query_len} T={key_len} {case} sinks={with_sinks}", flush=True)
-                subprocess.run(common + run + ["--save-outputs-npz", str(outputs)], check=True)
-                for runtime in runtimes:
-                    if runtime in op_assertions:
-                        check = ["--assert-output-bundle", str(outputs), "--approx", "approximate"]
-                        subprocess.run(common + [runtime] + run + check + op_assertions[runtime], check=True)
+                try:
+                    subprocess.run(common + run + ["--save-outputs-npz", str(outputs)], check=True)
+                    for runtime in runtimes:
+                        if runtime in op_assertions:
+                            check = ["--assert-output-bundle", str(outputs), "--approx", "approximate"]
+                            subprocess.run(common + [runtime] + run + check + op_assertions[runtime], check=True)
+                except subprocess.CalledProcessError:
+                    print(f"Failed: {dtype} S={query_len} T={key_len} {case} sinks={with_sinks}", file=sys.stderr, flush=True)
+                    raise
