@@ -91,7 +91,8 @@ fn resolve_ellipsis(expr: &AxesMapping, ranks: &[usize]) -> TractResult<AxesMapp
         .iter()
         .enumerate()
         .filter_map(|(ix, rank)| {
-            if expr.axis_positions(InOut::In(ix), '*').is_ok() {
+            if expr.axis_positions(InOut::In(ix), '*').is_ok_and(|positions| !positions.is_empty())
+            {
                 Some(rank + 1 - expr.rank(InOut::In(ix)))
             } else {
                 None
@@ -152,5 +153,11 @@ mod test {
         let resolved = resolve_ellipsis(&expr, &[4, 3])?;
         assert_eq!(resolved, "abgi,gih->abgh".parse().unwrap());
         Ok(())
+    }
+
+    #[test]
+    fn test_resolve_ellipsis_in_first_input_only() {
+        let expr: AxesMapping = "*j,jk->*k".parse().unwrap();
+        assert_eq!(resolve_ellipsis(&expr, &[3, 2]).unwrap().to_string(), "abj,jk->abk");
     }
 }
