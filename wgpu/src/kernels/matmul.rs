@@ -177,6 +177,26 @@ fn blocked_applies(
         && element_offset(out, 0).is_multiple_of(4)
 }
 
+/// Whether the product is one the lane-parallel GEMV takes once its operands are
+/// swapped, `C = A·B` run as `Cᵀ = Bᵀ·Aᵀ`: a few rows of a `b` held `[n, k]` (the
+/// activation of a layer wired weight first) against an `a` contiguous along `k`,
+/// with no epilogue operand to remap.
+fn lane_parallel_once_swapped(
+    t: Transposes,
+    a: &DeviceTensor,
+    b: &DeviceTensor,
+    extras: &[&DeviceTensor],
+) -> TractResult<bool> {
+    let (m, k, n) = mkn(a.shape(), b.shape(), t.a, t.b)?;
+    let a_k_stride = a.strides()[a.rank() - if t.a { 2 } else { 1 }];
+    Ok(extras.is_empty()
+        && t.b
+        && (1..=MATMUL_GEMV_KC_MAX_M).contains(&n)
+        && m > MATMUL_GEMV_KC_MAX_M
+        && k >= MATMUL_GEMV_KC_MIN_K
+        && a_k_stride == 1)
+}
+
 /// Whether the lane-parallel `gemv_kc` kernel applies: `b` contiguous along `k`
 /// with a few rows of `a` and `k` of at least `MATMUL_GEMV_KC_MIN_K`, so a slice of
 /// lanes walks it side by side for one output column — or, an `m = 1` product too thin to fill the plain kernel's
@@ -276,6 +296,20 @@ fn wgpu_matmul_dispatch_impl(
 ) -> TractResult<()> {
     if crate::kernels::matmul_bq::is_block_quant_weight(b) {
         return crate::kernels::matmul_bq::wgpu_bq_dispatch(t, epilogue, a, b, extras, output);
+    }
+    if lane_parallel_once_swapped(t, a, b, extras)? {
+        let swapped = Transposes { a: !t.b, b: !t.a, c: !t.c };
+        return wgpu_matmul_dispatch_impl(
+            swapped,
+            epilogue,
+            b,
+            a,
+            extras,
+            output,
+            f16_accumulation,
+            small_gemv_override,
+            column_first_override,
+        );
     }
     let (transpose_a, transpose_b, transpose_c) = (t.a, t.b, t.c);
     with_wgpu_queue(|q| {
@@ -1727,6 +1761,56 @@ mod tests {
         let y = model.wire_node("residual", tract_core::ops::math::add(), &[second, first])?[0];
         model.select_output_outlets(&[y])?;
         gpu_vs_cpu(model, Tensor::from_shape(&a_shape, &fill(4, m * k))?)
+    }
+
+    /// Products wired weight first, `a` a weight contiguous along `k` and `b` a few
+    /// rows of activation: run swapped, on the lane-parallel GEMV, when `b` is held
+    /// `[n, k]`; held `[k, n]`, they keep their kernels.
+    #[test]
+    fn matmul_weight_first_runs_lane_parallel() -> TractResult<()> {
+        use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+        use tract_gpu::tensor::DeviceTensor;
+        use tract_gpu::tensor::IntoDevice;
+        for (m, k, n, tb, f16_) in [
+            (200usize, 256usize, 4usize, true, false),
+            (200, 256, 1, true, false),
+            (200, 170, 8, false, false),
+            (200, 256, 4, false, false),
+            (200, 128, 3, true, true),
+        ] {
+            let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
+            let b_shape = if tb { [1, n, k] } else { [1, k, n] };
+            let w = Tensor::from_shape(&[1, m, k], &fill(1, m * k))?.cast_to_dt(dt)?.into_owned();
+            let input = Tensor::from_shape(&b_shape, &fill(2, n * k))?.cast_to_dt(dt)?.into_owned();
+            let mut model = TypedModel::default();
+            let a = model.add_const("w", w.clone())?;
+            let b = model.add_source("x", dt.fact(b_shape))?;
+            let op = PrefixMatMul {
+                transpose_a: false,
+                transpose_b: tb,
+                transpose_c: false,
+                quantize_output: None,
+                operating_dt: None,
+            };
+            let y = model.wire_node("mm", op, &[a, b])?[0];
+            model.select_output_outlets(&[y])?;
+            gpu_vs_cpu(model, input.clone())
+                .with_context(|| format!("m={m} k={k} n={n} tb={tb} f16={f16_}"))?;
+
+            let (a, b) = (w.into_device()?, input.into_device()?);
+            let out = DeviceTensor::uninitialized_dt(dt, &[1, m, n])?;
+            let t = super::Transposes { a: false, b: tb, c: false };
+            let (_, profile) = crate::with_wgpu_queue(|queue| {
+                queue.profile(|| super::wgpu_matmul_dispatch(t, &[], &a, &b, &[], &out, false))
+            })?;
+            ensure!(
+                !tb || profile.is_empty()
+                    || profile.iter().any(|(name, _)| name.starts_with("matmul_gemv_kc")),
+                "m={m} k={k} n={n} tb={tb}: ran {:?}",
+                profile.iter().map(|p| p.0).collect::<Vec<_>>()
+            );
+        }
+        Ok(())
     }
 
     /// Products the k-contiguous GEMV kernel takes, `b` transposed so its rows run along `k`:
