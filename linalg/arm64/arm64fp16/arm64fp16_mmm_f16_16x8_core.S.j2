@@ -138,6 +138,8 @@
     ldp         x5, x6, [x0, #8]            // c base ptr, rsc
     ldp         x7, x8, [x0, #24]           // csc, item_size
 
+    cmp         x7, #2
+    beq         .store_col_contiguous
     cmp         x6, #2
     bne         .store_strides_generic
 
@@ -145,6 +147,30 @@
         str q{{ col * 2 }}, [ x5 ]
         str q{{ col * 2 + 1 }}, [ x5, #16 ]
         add x5, x5, x7
+    {% endfor %}
+
+    b           .non_linear_loop
+
+// Each half of the tile is transposed into v0 to v7, one row per register.
+.store_col_contiguous:
+    {% for half in range(0, 2) %}
+        {% for pair in range(0, 4) %}
+            trn1 v{{ pair * 2 }}.8h, v{{ 16 + pair * 4 + half }}.8h, v{{ 18 + pair * 4 + half }}.8h
+            trn2 v{{ pair * 2 + 1 }}.8h, v{{ 16 + pair * 4 + half }}.8h, v{{ 18 + pair * 4 + half }}.8h
+        {% endfor %}
+        {% for a in [0, 1, 4, 5] %}
+            trn1 v8.4s, v{{ a }}.4s, v{{ a + 2 }}.4s
+            trn2 v{{ a + 2 }}.4s, v{{ a }}.4s, v{{ a + 2 }}.4s
+            mov v{{ a }}.16b, v8.16b
+        {% endfor %}
+        {% for a in range(0, 4) %}
+            trn1 v8.2d, v{{ a }}.2d, v{{ a + 4 }}.2d
+            trn2 v{{ a + 4 }}.2d, v{{ a }}.2d, v{{ a + 4 }}.2d
+            mov v{{ a }}.16b, v8.16b
+        {% endfor %}
+        {% for row in range(0, 8) %}
+            st1 { v{{ row }}.8h }, [ x5 ], x6
+        {% endfor %}
     {% endfor %}
 
     b           .non_linear_loop
