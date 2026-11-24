@@ -26,9 +26,28 @@ unsafe fn fma(
     acc
 }
 
+/// `acc + a * b`, on one f16.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "fp16")]
+#[inline]
+unsafe fn fma_scalar(acc: f16, a: f16, b: f16) -> f16 {
+    let mut bits = acc.to_bits();
+    unsafe {
+        std::arch::asm!(
+            "fmadd {acc:h}, {a:h}, {b:h}, {acc:h}",
+            acc = inout(vreg) bits,
+            a = in(vreg) a.to_bits(),
+            b = in(vreg) b.to_bits(),
+            options(pure, nomem, nostack, preserves_flags)
+        );
+    }
+    f16::from_bits(bits)
+}
+
 /// [`crate::routines::DepthwiseWF16`]: input strides 1 and 2 are vectorised, eight output
-/// points per vector, and every other stride and the tail of a run stay scalar. The vector loops
-/// stop early enough that no lane reads past `offsets[t] + (len - 1) * in_stride`.
+/// points per vector, the last vector of a run overlapping the one before it. Every other
+/// stride, and the points a vector cannot reach, stay scalar. No lane reads past
+/// `offsets[t] + (len - 1) * in_stride`.
 ///
 /// # Safety
 /// As [`crate::routines::DepthwiseWF32`].
@@ -100,20 +119,22 @@ unsafe fn strided<const S: usize>(
             }
             i += 32;
         }
-        while i + 8 + spare <= len {
+        while i + spare < len && len >= 8 + spare {
+            let at = i.min(len - 8 - spare);
             let mut acc = biasv;
             for (&tap, &offset) in taps.iter().zip(offsets) {
-                let p = input.offset(offset).add(i * S);
+                let p = input.offset(offset).add(at * S);
                 acc = fma(acc, load8::<S>(p), vdupq_n_u16(tap.to_bits()));
             }
-            vst1q_u16(output.add(i) as *mut u16, acc);
-            i += 8;
+            vst1q_u16(output.add(at) as *mut u16, acc);
+            i = at + 8;
         }
         scalar_w(input, output, taps, offsets, bias, i, len, S as isize);
     }
 }
 
 #[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "fp16")]
 #[allow(clippy::too_many_arguments)]
 unsafe fn scalar_w(
     input: *const f16,
@@ -129,7 +150,7 @@ unsafe fn scalar_w(
         for i in from..len {
             let mut sum = bias;
             for (&tap, &offset) in taps.iter().zip(offsets) {
-                sum += tap * *input.offset(offset + i as isize * in_stride);
+                sum = fma_scalar(sum, tap, *input.offset(offset + i as isize * in_stride));
             }
             *output.add(i) = sum;
         }
@@ -198,7 +219,8 @@ pub unsafe fn depthwise_c_f16(
             while c < channels {
                 let mut sum = *bias.add(c);
                 for (&kix, &off) in tap_indices.iter().zip(offsets) {
-                    sum += *kernel.add(kix * k_stride + c) * *iptr.offset(off).add(c);
+                    sum =
+                        fma_scalar(sum, *kernel.add(kix * k_stride + c), *iptr.offset(off).add(c));
                 }
                 *optr.add(c) = sum;
                 c += 1;
