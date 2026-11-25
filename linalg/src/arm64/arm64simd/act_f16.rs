@@ -258,8 +258,6 @@ unsafe fn lookup_f16(buf: &mut [f16], lut: &[u16; 1 << 16]) {
     }
 }
 
-bail_stub!(aarch64; unsafe fn lookup_f16(&mut [f16], &[u16; 1 << 16]));
-
 routine_ew_rust!(aarch64;
     f16,
     arm64simd_silu_f16_lut_8n,
