@@ -268,8 +268,9 @@ impl OptMaxPool {
     /// channel plane of 1-element pixels when channels come first, a whole image of
     /// C-element pixels when they come last. Each kernel tap folds into the row over the
     /// span of pixels where it lands in bounds, so a stride-1 tap reduces two contiguous
-    /// slices. Taps fold from `init` in the generic walk's order with its comparison, so both
-    /// pick the same values.
+    /// slices. Taps fold from `init` with the generic walk's comparison, so both pick equal
+    /// values. Where it takes fewer folds, kernel rows fold first, each input row once, and
+    /// kernel columns then fold those; only which of two equal taps wins may differ.
     fn try_row_spans<T: Datum + Copy + PartialOrd>(
         &self,
         input: &Tensor,
@@ -316,6 +317,23 @@ impl OptMaxPool {
             })
             .collect();
         let (in_image_len, out_image_len) = (h * w * px, oh * ow * px);
+        // Folds the kernel row of input row `irow` into an output-wide row.
+        let fold_row = |row: &mut [T], irow: &[T]| {
+            for &(lo, hi, start) in &column_spans {
+                let (row, taps) = (&mut row[lo * px..hi * px], &irow[start * px..]);
+                if sw == 1 {
+                    fold_max(row, taps.iter());
+                } else if px == 1 {
+                    fold_max(row, taps.iter().step_by(sw));
+                } else {
+                    for (pixel, taps) in row.chunks_exact_mut(px).zip(taps.chunks(sw * px)) {
+                        fold_max(pixel, taps.iter());
+                    }
+                }
+            }
+        };
+        let (irow_len, orow_len) = (w * px, ow * px);
+        let folded_rows = sh * kw + kh < kh * kw;
         let work = output_slice.len() * kh * kw;
         tract_linalg::multithread::par_chunks_mut(
             output_slice,
@@ -323,27 +341,39 @@ impl OptMaxPool {
             work,
             |first, out_images| {
                 let images = input_slice[first * in_image_len..].chunks_exact(in_image_len);
+                let mut rows = vec![init; if folded_rows { h * orow_len } else { 0 }];
                 for (image, out_image) in images.zip(out_images.chunks_exact_mut(out_image_len)) {
-                    for (oy, row) in out_image.chunks_exact_mut(ow * px).enumerate() {
-                        for ky in 0..kh {
-                            let iy = (oy * sh + ky * dh) as isize - pt;
+                    if folded_rows {
+                        rows.fill(init);
+                        for (row, irow) in
+                            rows.chunks_exact_mut(orow_len).zip(image.chunks_exact(irow_len))
+                        {
+                            fold_row(row, irow);
+                        }
+                    }
+                    for ky in 0..kh {
+                        let offset = (ky * dh) as isize - pt;
+                        if folded_rows && sh == 1 {
+                            let lo = (-offset).max(0) as usize;
+                            let hi = (h as isize - offset).clamp(0, oh as isize) as usize;
+                            if lo < hi {
+                                let from = (lo as isize + offset) as usize * orow_len;
+                                fold_max(
+                                    &mut out_image[lo * orow_len..hi * orow_len],
+                                    rows[from..].iter(),
+                                );
+                            }
+                            continue;
+                        }
+                        for (oy, row) in out_image.chunks_exact_mut(orow_len).enumerate() {
+                            let iy = (oy * sh) as isize + offset;
                             if iy < 0 || iy >= h as isize {
                                 continue;
                             }
-                            let irow = &image[iy as usize * w * px..][..w * px];
-                            for &(lo, hi, start) in &column_spans {
-                                let (row, taps) = (&mut row[lo * px..hi * px], &irow[start * px..]);
-                                if sw == 1 {
-                                    fold_max(row, taps.iter());
-                                } else if px == 1 {
-                                    fold_max(row, taps.iter().step_by(sw));
-                                } else {
-                                    for (pixel, taps) in
-                                        row.chunks_exact_mut(px).zip(taps.chunks(sw * px))
-                                    {
-                                        fold_max(pixel, taps.iter());
-                                    }
-                                }
+                            if folded_rows {
+                                fold_max(row, rows[iy as usize * orow_len..][..orow_len].iter());
+                            } else {
+                                fold_row(row, &image[iy as usize * irow_len..][..irow_len]);
                             }
                         }
                     }
@@ -598,6 +628,9 @@ mod tests {
             (tvec![5usize, 5], PaddingSpec::SameUpper, tvec![1usize, 1]),
             (tvec![2, 2], PaddingSpec::Valid, tvec![2, 2]),
             (tvec![5, 3], PaddingSpec::Valid, tvec![2, 3]),
+            (tvec![7, 4], PaddingSpec::SameLower, tvec![1, 2]),
+            (tvec![3, 5], PaddingSpec::SameUpper, tvec![3, 1]),
+            (tvec![30, 30], PaddingSpec::SameUpper, tvec![1, 1]),
         ];
         for (kernel, padding, strides) in cases {
             for format in [DataFormat::NCHW, DataFormat::NHWC] {
