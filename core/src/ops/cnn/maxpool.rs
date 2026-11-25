@@ -153,10 +153,15 @@ impl OptMaxPool {
         {
             return Ok(tvec!(values.into_tvalue()));
         }
-        if self.with_index_outputs.is_none()
-            && let Some(values) = self.try_row_spans::<T>(input, geo)?
-        {
-            return Ok(tvec!(values.into_tvalue()));
+        if self.with_index_outputs.is_none() {
+            let values = if input_dt == DatumType::F16 {
+                self.try_row_spans_f16(input, geo)?
+            } else {
+                self.try_row_spans::<T>(input, geo, T::min_value())?
+            };
+            if let Some(values) = values {
+                return Ok(tvec!(values.into_tvalue()));
+            }
         }
 
         let input_plain = input.try_as_plain_ram()?;
@@ -240,16 +245,36 @@ impl OptMaxPool {
         Ok(Some(values))
     }
 
+    /// [`Self::try_row_spans`] over [`f16_to_key`] keys.
+    fn try_row_spans_f16(
+        &self,
+        input: &Tensor,
+        geo: &ConcretePoolGeometry,
+    ) -> TractResult<Option<Tensor>> {
+        let input_plain = input.try_as_plain_ram()?;
+        let keys: Vec<i16> =
+            input_plain.as_slice::<f16>()?.iter().map(|x| f16_to_key(*x)).collect();
+        let keys = Tensor::from_shape(input.shape(), &keys)?;
+        let Some(keys) = self.try_row_spans::<i16>(&keys, geo, f16_to_key(f16::MIN))? else {
+            return Ok(None);
+        };
+        let keys_plain = keys.try_as_plain_ram()?;
+        let values: Vec<f16> =
+            keys_plain.as_slice::<i16>()?.iter().map(|k| key_to_f16(*k)).collect();
+        Ok(Some(Tensor::from_shape(keys.shape(), &values)?))
+    }
+
     /// Any 2D pool, walked one output row at a time over images of contiguous pixels: a
     /// channel plane of 1-element pixels when channels come first, a whole image of
     /// C-element pixels when they come last. Each kernel tap folds into the row over the
     /// span of pixels where it lands in bounds, so a stride-1 tap reduces two contiguous
-    /// slices. Taps fold in the generic walk's order with its comparison, so both pick the
-    /// same values.
-    fn try_row_spans<T: Datum + Copy + num_traits::Bounded + PartialOrd>(
+    /// slices. Taps fold from `init` in the generic walk's order with its comparison, so both
+    /// pick the same values.
+    fn try_row_spans<T: Datum + Copy + PartialOrd>(
         &self,
         input: &Tensor,
         geo: &ConcretePoolGeometry,
+        init: T,
     ) -> TractResult<Option<Tensor>> {
         let patch = &geo.patch;
         let ish = &geo.input_shape;
@@ -275,7 +300,7 @@ impl OptMaxPool {
         let mut output = Tensor::zero_dt(input.datum_type(), &geo.output_shape.shape)?;
         let mut output_plain = output.try_as_plain_ram_mut()?;
         let output_slice = output_plain.as_slice_mut::<T>()?;
-        output_slice.fill(T::min_value());
+        output_slice.fill(init);
         let input_plain = input.try_as_plain_ram()?;
         let input_slice = input_plain.as_slice::<T>()?;
         let column_spans: TVec<(usize, usize, usize)> = (0..kw)
@@ -328,6 +353,19 @@ impl OptMaxPool {
         )?;
         Ok(Some(output))
     }
+}
+
+/// An integer ordered as the f16 it encodes, so a fold of keys vectorises where one of f16 does
+/// not. NaN encodes as `f16::MIN`, the value the fold starts from: it is never picked.
+/// [`key_to_f16`] inverts it on everything else.
+fn f16_to_key(x: f16) -> i16 {
+    let bits = x.to_bits();
+    let bits = if bits & 0x7fff > 0x7c00 { f16::MIN.to_bits() } else { bits } as i16;
+    bits ^ ((bits >> 15) & 0x7fff)
+}
+
+fn key_to_f16(key: i16) -> f16 {
+    f16::from_bits((key ^ ((key >> 15) & 0x7fff)) as u16)
 }
 
 fn fold_max<'a, T: Copy + PartialOrd + 'a>(row: &mut [T], taps: impl Iterator<Item = &'a T>) {
@@ -535,6 +573,73 @@ mod tests {
             })
             .unwrap();
             assert_eq!(*fast[0], *reference[0]);
+        }
+    }
+
+    #[test]
+    fn f16_keys_order_and_round_trip() {
+        let mut finite: Vec<f16> =
+            (0..=u16::MAX).map(f16::from_bits).filter(|x| !x.is_nan()).collect();
+        for x in &finite {
+            assert_eq!(key_to_f16(f16_to_key(*x)).to_bits(), x.to_bits());
+        }
+        finite.sort_by_key(|x| f16_to_key(*x));
+        assert!(finite.windows(2).all(|w| w[0] <= w[1]));
+        for nan in [f16::NAN, -f16::NAN, f16::from_bits(0x7c01), f16::from_bits(0xffff)] {
+            assert_eq!(key_to_f16(f16_to_key(nan)), f16::MIN);
+        }
+    }
+
+    #[test]
+    fn maxpool_f16_matches_reference() {
+        let specials =
+            [f16::NAN, f16::INFINITY, f16::NEG_INFINITY, f16::ZERO, f16::NEG_ZERO, f16::MIN];
+        let cases = [
+            (tvec![5usize, 5], PaddingSpec::SameUpper, tvec![1usize, 1]),
+            (tvec![2, 2], PaddingSpec::Valid, tvec![2, 2]),
+            (tvec![5, 3], PaddingSpec::Valid, tvec![2, 3]),
+        ];
+        for (kernel, padding, strides) in cases {
+            for format in [DataFormat::NCHW, DataFormat::NHWC] {
+                for special_every in [usize::MAX, 5, 1] {
+                    let shape =
+                        if format == DataFormat::NCHW { [2, 9, 21, 19] } else { [2, 21, 19, 9] };
+                    let data: Vec<f16> = (0..shape.iter().product::<usize>())
+                        .map(|i| {
+                            if i % special_every == special_every - 1 {
+                                specials
+                                    [(i / special_every) % if special_every == 1 { 1 } else { 6 }]
+                            } else {
+                                f16::from_f32((i * 7919 % 1009) as f32 * 0.5 - 250.0)
+                            }
+                        })
+                        .collect();
+                    let input = Tensor::from_shape(&shape, &data).unwrap().into_tvalue();
+                    let pool_spec = PoolSpec::new(
+                        format,
+                        kernel.clone(),
+                        padding.clone(),
+                        None,
+                        Some(strides.clone()),
+                        9,
+                        9,
+                    );
+                    let run = |with_index_outputs| {
+                        MaxPool { pool_spec: pool_spec.clone(), with_index_outputs }
+                            .eval(&EvalContext::out_of_plan(), tvec!(input.clone()))
+                            .unwrap()
+                            .remove(0)
+                    };
+                    let (fast, reference) = (run(None), run(Some(DatumType::I32)));
+                    assert_eq!(fast.shape(), reference.shape());
+                    let (fast, reference) =
+                        (fast.try_as_plain_ram().unwrap(), reference.try_as_plain_ram().unwrap());
+                    assert_eq!(
+                        fast.as_slice::<f16>().unwrap(),
+                        reference.as_slice::<f16>().unwrap()
+                    );
+                }
+            }
         }
     }
 
