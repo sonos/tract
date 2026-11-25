@@ -123,9 +123,11 @@ class SharedMask {
     try {
       const started = performance.now();
       segmenter.run(modelCanvas);
+      // Covers what is submitted so far, which is the inference without the composite.
+      const inferred = tractPoll.track(tractDevice.queue.onSubmittedWorkDone());
       composer.setMaskFrame(this.frameId);
       showMask();
-      await tractPoll.track(tractDevice.queue.onSubmittedWorkDone());
+      await inferred;
       post({mask: performance.now() - started});
     } finally {
       this.busy = false;
