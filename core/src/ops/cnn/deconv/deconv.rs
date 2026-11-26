@@ -263,6 +263,22 @@ impl TypedOp for Deconv {
         Ok(axes)
     }
 
+    /// Channel moves and batch-axis changes on the data, through `PoolSpec::change_axes`. The
+    /// kernel and bias keep their layout.
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        rule_if!(io == InOut::In(0) || io == InOut::Out(0));
+        let shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
+        rule_if_some!(pool_spec = self.pool_spec.change_axes(&shape, change)?);
+        let op = Deconv { pool_spec, ..self.clone() };
+        Ok(Some(AxisChangeConsequence::substitute(op).wire_in(0, change).wire_out(0, change)))
+    }
+
     fn codegen(
         &self,
         model: &TypedModel,
@@ -278,4 +294,52 @@ impl TypedOp for Deconv {
     }
 
     as_op!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops::cnn::PaddingSpec;
+    use crate::ops::nn::DataFormat;
+
+    #[test]
+    fn channel_move_folds_into_deconv() -> TractResult<()> {
+        let pool_spec = PoolSpec::new(
+            DataFormat::NCHW,
+            tvec![3, 3],
+            PaddingSpec::Valid,
+            None,
+            Some(tvec![2, 2]),
+            3,
+            2,
+        );
+        let op = Deconv::new(pool_spec, KernelFormat::OIHW, tvec![0, 0], 1);
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([1, 4, 5, 3]))?;
+        let nchw = model.wire_node("to_nchw", AxisOp::Move(3, 1), &[x])?[0];
+        let kernel = Tensor::from_shape(
+            &[2, 3, 3, 3],
+            &(0..54).map(|i| ((i * 5) % 7) as f32 - 3.0).collect::<Vec<_>>(),
+        )?;
+        let kernel = model.add_const("kernel", kernel)?;
+        let bias = model.add_const("bias", tensor1(&[0.5f32, -1.0]))?;
+        let deconv = model.wire_node("deconv", op, &[nchw, kernel, bias])?;
+        let out = model.wire_node("to_nhwc", AxisOp::Move(1, 3), &deconv)?;
+        model.select_output_outlets(&out)?;
+        let input = Tensor::from_shape(
+            &[1, 4, 5, 3],
+            &(0..60).map(|i| (i % 9) as f32 - 4.0).collect::<Vec<_>>(),
+        )?;
+        let reference = model.clone().into_runnable()?.run(tvec!(input.clone().into_tvalue()))?;
+        let decluttered = model.into_decluttered()?;
+        ensure!(!decluttered.nodes().iter().any(|n| n.op_is::<AxisOp>()), "{decluttered}");
+        let formats: Vec<_> = decluttered
+            .nodes()
+            .iter()
+            .filter_map(|n| n.op_as::<Deconv>().map(|d| d.pool_spec.data_format))
+            .collect();
+        ensure!(formats == [DataFormat::NHWC], "{decluttered}");
+        let found = decluttered.into_runnable()?.run(tvec!(input.into_tvalue()))?;
+        found[0].close_enough(&reference[0], Approximation::Exact)
+    }
 }
