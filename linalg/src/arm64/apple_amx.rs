@@ -16,6 +16,14 @@ MMMExternKernel!(aarch64; apple_amx_mmm_f16_64x1<f16>(64, 1)@(128, 128) isa(Aarc
 /// The AMX tile is 32x32, and it only pays once both M and N fill one: below that the tile
 /// padding and the AMX dispatch cost more than the NEON kernel's whole call. The f16 side keeps
 /// a low-M NEON route on the same reasoning, at a threshold its own kernels' 16-row tile sets.
+/// The f16 NEON 16x8 kernel stays ahead of the AMX 64x32 tile below its 16-row tile, and also
+/// on a short K once M fills the AMX tile: there the AMX dispatch is paid per tile while K gives
+/// it too little arithmetic to amortise it.
+fn f16_neon_ahead(query: &Query) -> bool {
+    query.m.is_some_and(|m| m <= 16)
+        || (query.m.is_some_and(|m| m >= 64) && query.k.is_some_and(|k| k <= 96))
+}
+
 fn preferred(
     _isa: &crate::isa::IsaSet,
     dt: crate::DatumType,
@@ -40,7 +48,7 @@ fn preferred(
             })
         }
         (crate::DatumType::F16, Some(1)) => Some(apple_amx_mmm_f16_64x1.name.as_str()),
-        (crate::DatumType::F16, _) => Some(if query.m.is_some_and(|m| m <= 16) {
+        (crate::DatumType::F16, _) => Some(if f16_neon_ahead(query) {
             arm64fp16_mmm_f16_16x8_gen.name.as_str()
         } else {
             apple_amx_mmm_f16_64x32.name.as_str()
