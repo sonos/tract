@@ -114,6 +114,20 @@ impl TypedOp for Downsample {
             .with_context(|| format!("Pulling {} over {}", node, model.node(node.inputs[0].node)))
     }
 
+    /// Any change that keeps the downsampled axis whole: the axis follows it, input and output
+    /// take the same change.
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        rule_if_some!(axis = change.transform_axis(self.axis));
+        let op = Downsample { axis, ..self.clone() };
+        Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+    }
+
     as_op!();
 }
 
@@ -166,4 +180,26 @@ fn pull_downsample_up(
         return Ok(Some(patch));
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn downsample_axis_follows_change() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([1, 3, 6, 8]))?;
+        let down = model.wire_node("down", Downsample::new(2, 2, 0), &[x])?;
+        model.select_output_outlets(&down)?;
+        let node = model.node(down[0].node);
+        let op = node.op_as::<Downsample>().unwrap();
+        let moved = op.change_axes(&model, node, InOut::In(0), &AxisOp::Move(1, 3))?.unwrap();
+        let moved = moved.substitute_op.unwrap();
+        ensure!(moved.downcast_ref::<Downsample>().unwrap().axis == 1);
+        ensure!(op.change_axes(&model, node, InOut::In(0), &AxisOp::Rm(2))?.is_none());
+        let added = op.change_axes(&model, node, InOut::Out(0), &AxisOp::Add(0))?.unwrap();
+        ensure!(added.substitute_op.unwrap().downcast_ref::<Downsample>().unwrap().axis == 3);
+        Ok(())
+    }
 }
