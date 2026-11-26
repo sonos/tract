@@ -68,6 +68,8 @@ them on any conflict.
   `shunt_outside_unchecked` is a last resort, for surgical patches whose safety
   is locally obvious; reach for safe alternatives first.
 - No abstraction beyond the task — three similar lines beat a premature helper.
+- Knobs default to their type's `Default::default()` (`false` for a bool). A
+  behaviour that is on by default gets an opt-out named `TRACT_DISABLE_*`.
 
 ## Numerical precision
 Applies to every backend and kernel. Judge against the model's declared types.
