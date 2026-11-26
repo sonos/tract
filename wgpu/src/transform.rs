@@ -32,6 +32,7 @@ use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required};
 use tract_gpu::tensor::IntoDevice;
 
 use crate::context::wgpu_context;
+use crate::context::with_wgpu_queue;
 use crate::ops;
 
 /// A registered translator that can convert a core op into a wgpu GPU op.
@@ -148,7 +149,9 @@ impl ModelTransform for WgpuTransform {
             .with_rule_for("fuse_axis_op", crate::rewrite_rules::fuse_axis_op)
             .rewrite(&(), model)?;
         rewire_syncs(model)?;
-        Ok(())
+        // Folding constants evaluates device ops on this thread's queue. A model served from
+        // other threads, each on a queue of its own, must find those constants written.
+        with_wgpu_queue(|queue| queue.flush())
     }
 }
 
