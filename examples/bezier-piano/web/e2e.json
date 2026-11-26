@@ -1,0 +1,53 @@
+{
+  "path": "bezier-piano/",
+  "timeout": 300,
+  "media": {
+    "portrait": {
+      "url": "https://tract-test-assets.tract.rs/e2e/grace-hopper-640x360.y4m",
+      "sha256": "0909d4f26eeabf14d486e81d66a06071fb07a65a137343e1b25e9b4847115578",
+      "about": "Grace Hopper's portrait (public domain, examples/*/grace_hopper.jpg), centred on a grey 640x360 frame"
+    }
+  },
+  "camera": "portrait",
+  "progress": "document.getElementById('status').textContent",
+  "fail": "(document.getElementById('go').textContent === 'Unsupported' || document.getElementById('go').textContent === 'Unavailable' || /^Stopped:|rror|did not|denied|disconnected/i.test(document.getElementById('status').textContent)) && document.getElementById('status').textContent",
+  "steps": [
+    {
+      "wait": "document.getElementById('status').textContent.startsWith('Ready')"
+    },
+    {
+      "name": "starts on WebGPU",
+      "check": "(() => { const b = window.bezierPiano.backend(); return { fail: b !== 'tract · WebGPU' && `backend is ${b}`, info: b }; })()"
+    },
+    {
+      "run": "document.getElementById('go').click()"
+    },
+    {
+      "wait": "document.getElementById('status').textContent.startsWith('Live') && window.bezierPiano.inferenceMs() > 0"
+    },
+    {
+      "run": "new Promise((r) => setTimeout(r, 3000))"
+    },
+    {
+      "name": "tracks camera frames on WebGPU",
+      "check": "(() => { const ms = window.bezierPiano.inferenceMs(), fps = window.bezierPiano.fps(); return { fail: !(ms > 0 && fps > 0) && `inference ${ms} ms, ${fps} fps`, info: `${ms.toFixed(1)} ms median inference, ${document.getElementById('stats').textContent}` }; })()"
+    },
+    {
+      "name": "a pluck plays a note",
+      "check": "(() => { const before = window.bezierPiano.notes(); window.bezierPiano.pluckCenter(); const a = window.bezierPiano.audio(); return { fail: (window.bezierPiano.notes() !== before + 1 || a.active < 1) && JSON.stringify(a), info: `${JSON.stringify(a)} (no user gesture here, so the context may stay suspended)` }; })()"
+    },
+    {
+      "run": "document.getElementById('backend').value = 'cpu', document.getElementById('backend').dispatchEvent(new Event('change'))"
+    },
+    {
+      "wait": "window.bezierPiano.backend() === 'tract · wasm CPU' && !document.getElementById('backend').disabled"
+    },
+    {
+      "run": "new Promise((r) => setTimeout(r, 3000))"
+    },
+    {
+      "name": "keeps tracking after switching to the CPU",
+      "check": "(() => { const ms = window.bezierPiano.inferenceMs(); return { fail: !(ms > 0) && `inference ${ms} ms`, info: `${ms.toFixed(1)} ms median inference on the CPU` }; })()"
+    }
+  ]
+}

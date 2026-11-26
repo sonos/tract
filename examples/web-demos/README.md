@@ -13,6 +13,7 @@ prefix of the `tract-demo` R2 bucket:
 | `/nemotron/`  | [`nemo-nemotron35-streaming-asr/web`](../nemo-nemotron35-streaming-asr/web) |
 | `/ppocr/`     | [`ppocr/web`](../ppocr/web)                 |
 | `/supertonic/` | [`supertonic/web`](../supertonic/web)     |
+| `/bezier-piano/` | [`bezier-piano/web`](../bezier-piano/web) |
 
 A new demo gets a card in `index.html` and a line here; its page links back to `../`.
 
