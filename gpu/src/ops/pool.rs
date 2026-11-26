@@ -13,6 +13,83 @@ pub enum PoolKind {
     },
 }
 
+/// A 1D or 2D pool as the 2D geometry a kernel reads: a 1D pool gets a unit height, a format
+/// without a batch axis a unit batch. In both layouts these lengths fully describe the
+/// contiguous input and output buffers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PoolGeometry2d {
+    pub n: usize,
+    pub c: usize,
+    pub ih: usize,
+    pub iw: usize,
+    pub oh: usize,
+    pub ow: usize,
+    pub kh: usize,
+    pub kw: usize,
+    pub stride_h: usize,
+    pub stride_w: usize,
+    pub pad_h: usize,
+    pub pad_w: usize,
+    pub dil_h: usize,
+    pub dil_w: usize,
+    pub channels_last: bool,
+}
+
+impl PoolGeometry2d {
+    /// The geometry of `pool_spec` from `input_shape` to `output_shape`; `None` for pools over
+    /// more than two spatial axes.
+    pub fn new(
+        pool_spec: &PoolSpec,
+        input_shape: &[usize],
+        output_shape: &[usize],
+    ) -> TractResult<Option<PoolGeometry2d>> {
+        let input = pool_spec.data_format.shape(input_shape)?;
+        let output = pool_spec.data_format.shape(output_shape)?;
+        let rank = input.hw_rank();
+        if !(1..=2).contains(&rank) {
+            return Ok(None);
+        }
+        let padding = pool_spec.computed_padding(input.hw_dims());
+        let pad_before: TVec<usize> = padding.iter().map(|p| p.pad_before).collect();
+        let hw = |unit: usize, v: &[usize]| if rank == 2 { (v[0], v[1]) } else { (unit, v[0]) };
+        let (ih, iw) = hw(1, input.hw_dims());
+        let (oh, ow) = hw(1, output.hw_dims());
+        let (kh, kw) = hw(1, &pool_spec.kernel_shape);
+        let (stride_h, stride_w) = hw(1, &pool_spec.strides());
+        let (dil_h, dil_w) = hw(1, &pool_spec.dilations());
+        let (pad_h, pad_w) = hw(0, &pad_before);
+        Ok(Some(PoolGeometry2d {
+            n: *input.n().unwrap_or(&1),
+            c: *input.c(),
+            ih,
+            iw,
+            oh,
+            ow,
+            kh,
+            kw,
+            stride_h,
+            stride_w,
+            pad_h,
+            pad_w,
+            dil_h,
+            dil_w,
+            channels_last: pool_spec.data_format.c_is_last(),
+        }))
+    }
+
+    /// Whether the window covers the whole unpadded input in one output position.
+    pub fn is_global(&self) -> bool {
+        self.oh == 1
+            && self.ow == 1
+            && self.pad_h == 0
+            && self.pad_w == 0
+            && self.dil_h == 1
+            && self.dil_w == 1
+            && self.kh == self.ih
+            && self.kw == self.iw
+    }
+}
+
 /// Launches the backend's pooling kernel from `input` into the already shaped `output`.
 pub type DispatchPoolFn = fn(
     pool_spec: &PoolSpec,

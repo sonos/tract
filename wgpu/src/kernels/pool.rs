@@ -1,6 +1,6 @@
 use tract_core::internal::*;
 use tract_core::ops::cnn::{MaxPool, OptMaxPool, OptSumPool, PoolSpec, SumPool};
-use tract_gpu::ops::pool::{GpuPool, PoolKind};
+use tract_gpu::ops::pool::{GpuPool, PoolGeometry2d, PoolKind};
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
@@ -14,10 +14,11 @@ pub fn all_pipeline_keys(shader_f16: bool) -> Vec<PipelineKey> {
     keys_for(ModuleKind::Pool, &["max_pool_2d", "sum_pool_2d", "global_avg_pool_2d"], shader_f16)
 }
 
+/// f16/f32 pools over one or two spatial axes with a static shape, in any data format, with or
+/// without a batch axis.
 pub fn wgpu_pool_supported(pool_spec: &PoolSpec, fact: &TypedFact) -> bool {
     matches!(fact.datum_type, DatumType::F16 | DatumType::F32)
-        && fact.rank() == 4
-        && pool_spec.kernel_shape.len() == 2
+        && matches!(pool_spec.kernel_shape.len(), 1 | 2)
         && fact.shape.as_concrete().is_some()
 }
 
@@ -31,29 +32,15 @@ pub fn wgpu_pool_dispatch(
         q.retain_tensor(input);
         q.retain_tensor(output);
         let dt = ShaderDtype::from_datum(input.datum_type())?;
-        let in_shape = pool_spec.data_format.shape(input.shape())?;
-        let out_shape = pool_spec.data_format.shape(output.shape())?;
-        ensure!(in_shape.hw_rank() == 2);
-        let strides = pool_spec.strides();
-        let dilations = pool_spec.dilations();
-        let padding = pool_spec.computed_padding(in_shape.hw_dims());
+        let g = PoolGeometry2d::new(pool_spec, input.shape(), output.shape())?
+            .context("wgpu pool is 1D or 2D")?;
         let (count_include_pad, normalize) = match kind {
             PoolKind::Max => (0u32, 0u32),
             PoolKind::Sum { count_include_pad, normalize } => {
                 (count_include_pad as u32, normalize as u32)
             }
         };
-        let channels_last = pool_spec.data_format.c_is_last() as u32;
-        let n = *in_shape.n().unwrap_or(&1);
-        let c = *in_shape.c();
-        let oh = out_shape.hw_dims()[0];
-        let ow = out_shape.hw_dims()[1];
-        let global_average = matches!(kind, PoolKind::Sum { normalize: true, .. })
-            && oh == 1
-            && ow == 1
-            && padding.iter().all(|p| p.pad_before == 0 && p.pad_after == 0)
-            && dilations.as_ref() == [1, 1]
-            && pool_spec.kernel_shape.as_slice() == in_shape.hw_dims();
+        let global_average = matches!(kind, PoolKind::Sum { normalize: true, .. }) && g.is_global();
         let stem = if global_average {
             "global_avg_pool_2d"
         } else {
@@ -66,35 +53,35 @@ pub fn wgpu_pool_dispatch(
             module: ModuleKey { kind: ModuleKind::Pool, dtype: dt },
             entry: EntryPoint::typed(stem, dt),
         })?;
-        let nelem = (n * oh * ow * c) as u64;
+        let nelem = (g.n * g.oh * g.ow * g.c) as u64;
         let in_buf = get_wgpu_buffer(input);
         let out_buf = get_wgpu_buffer(output);
         let bg = q.context().bind_group(LayoutKind::Unary, &[in_buf, out_buf], q.uniform())?;
         let params = pack_u32s(&[
             element_offset(input, 0) as u32,
             element_offset(output, 0) as u32,
-            n as u32,
-            in_shape.hw_dims()[0] as u32,
-            in_shape.hw_dims()[1] as u32,
-            c as u32,
-            oh as u32,
-            ow as u32,
-            pool_spec.kernel_shape[0] as u32,
-            pool_spec.kernel_shape[1] as u32,
-            strides[0] as u32,
-            strides[1] as u32,
-            padding[0].pad_before as u32,
-            padding[1].pad_before as u32,
-            dilations[0] as u32,
-            dilations[1] as u32,
+            g.n as u32,
+            g.ih as u32,
+            g.iw as u32,
+            g.c as u32,
+            g.oh as u32,
+            g.ow as u32,
+            g.kh as u32,
+            g.kw as u32,
+            g.stride_h as u32,
+            g.stride_w as u32,
+            g.pad_h as u32,
+            g.pad_w as u32,
+            g.dil_h as u32,
+            g.dil_w as u32,
             count_include_pad,
             normalize,
-            channels_last,
+            g.channels_last as u32,
             0,
         ]);
         let dyn_off = q.alloc_uniform(&params)?;
         if global_average {
-            q.dispatch_grid("pool_global", &pipeline, &bg, dyn_off, [(n * c) as u32, 1, 1])
+            q.dispatch_grid("pool_global", &pipeline, &bg, dyn_off, [(g.n * g.c) as u32, 1, 1])
         } else {
             q.dispatch("pool", &pipeline, &bg, dyn_off, nelem)
         }
@@ -304,7 +291,56 @@ fn sum_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 mod tests {
     use tract_core::internal::*;
 
-    use crate::test_utils::{fill, gpu_vs_cpu};
+    use crate::test_utils::{fill, gpu_vs_cpu, transformed};
+
+    /// Max and average pools in every data format, with and without a batch axis, over one and
+    /// two spatial axes: each must run on the device and match the CPU.
+    #[test]
+    fn pools_in_every_layout_run_on_device() -> TractResult<()> {
+        use tract_core::ops::cnn::{MaxPool, PaddingSpec, PoolSpec, SumPool};
+        use tract_core::ops::nn::DataFormat;
+        let c = 5;
+        for format in [DataFormat::NCHW, DataFormat::NHWC, DataFormat::CHW, DataFormat::HWC] {
+            for hw in [vec![9usize, 11], vec![13]] {
+                let rank = hw.len();
+                let spec = PoolSpec::new(
+                    format,
+                    tvec![3; rank],
+                    PaddingSpec::SameUpper,
+                    None,
+                    Some(tvec![2; rank]),
+                    c,
+                    c,
+                );
+                let shape = format.from_n_c_hw(2, c, &*hw)?.shape;
+                for max in [true, false] {
+                    let op: Box<dyn TypedOp> = if max {
+                        Box::new(MaxPool::new(spec.clone(), None))
+                    } else {
+                        Box::new(SumPool::new(spec.clone(), false, true))
+                    };
+                    let case = format!("{format:?} {hw:?} max={max}");
+                    let mut model = TypedModel::default();
+                    let x = model.add_source("x", f32::fact(&*shape))?;
+                    let y = model.wire_node("pool", op, &[x])?[0];
+                    model.select_output_outlets(&[y])?;
+                    let translated = transformed(model.clone())?;
+                    ensure!(
+                        translated
+                            .nodes()
+                            .iter()
+                            .any(|n| n.op.name().ends_with("Pool")
+                                && n.op.name().starts_with("Wgpu")),
+                        "{case}: the pool did not reach the device"
+                    );
+                    let len = shape.iter().product();
+                    gpu_vs_cpu(model, Tensor::from_shape(&shape, &fill(5, len))?)
+                        .with_context(|| case.clone())?;
+                }
+            }
+        }
+        Ok(())
+    }
 
     /// Squeeze/excitation blocks use full-spatial average pools. The WGPU path
     /// reduces each channel across a workgroup instead of making one invocation
