@@ -226,6 +226,22 @@ impl TypedOp for Iff {
         crate::optim::propagate_roi::bubble_roi(model, node)
     }
 
+    /// The three inputs and the output share a rank and broadcast axis by axis, so they all
+    /// take the same change. An axis is only removed where it is 1 everywhere.
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        if let AxisOp::Rm(rm) = change {
+            let (inputs, outputs) = model.node_facts(node.id)?;
+            rule_if!(inputs.iter().chain(&outputs).all(|f| f.shape[*rm].is_one()));
+        }
+        Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,
@@ -585,5 +601,29 @@ mod tests {
             tvec![1.to_dim(), 2.to_dim(), 3.to_dim()]
         );
         Ok(())
+    }
+
+    /// A PReLU-shaped Iff between two channel moves: the moves fold away, the per-channel
+    /// constant is permuted with them.
+    #[test]
+    fn channel_move_folds_through_iff() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([1, 4, 5, 3]))?;
+        let c = model.add_source("c", bool::fact([1, 4, 5, 3]))?;
+        let x_nchw = model.wire_node("x_nchw", AxisOp::Move(3, 1), &[x])?[0];
+        let c_nchw = model.wire_node("c_nchw", AxisOp::Move(3, 1), &[c])?[0];
+        let slope = model.add_const("slope", tensor4(&[[[[0.5f32]], [[-1.0]], [[2.0]]]]))?;
+        let iff = model.wire_node("iff", Iff, &[c_nchw, x_nchw, slope])?;
+        let out = model.wire_node("to_nhwc", AxisOp::Move(1, 3), &iff)?;
+        model.select_output_outlets(&out)?;
+        let xv = Tensor::from_shape(&[1, 4, 5, 3], &(0..60).map(|i| i as f32).collect::<Vec<_>>())?;
+        let cv =
+            Tensor::from_shape(&[1, 4, 5, 3], &(0..60).map(|i| i % 7 < 3).collect::<Vec<_>>())?;
+        let inputs = tvec!(xv.into_tvalue(), cv.into_tvalue());
+        let reference = model.clone().into_runnable()?.run(inputs.clone())?;
+        let decluttered = model.into_decluttered()?;
+        ensure!(!decluttered.nodes().iter().any(|n| n.op_is::<AxisOp>()), "{decluttered}");
+        let found = decluttered.into_runnable()?.run(inputs)?;
+        found[0].close_enough(&reference[0], Approximation::Exact)
     }
 }
