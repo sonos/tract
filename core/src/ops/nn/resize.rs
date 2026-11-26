@@ -540,6 +540,25 @@ impl TypedOp for NearestUpsample {
         Ok(tvec!(inputs[0].datum_type.fact(shape)))
     }
 
+    /// Any axis move or added axis, and removing an axis that is not upsampled: the scales
+    /// follow the axes, input and output take the same change.
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        rule_if!(!matches!(change, AxisOp::Reshape(..)));
+        if let AxisOp::Rm(axis) = change {
+            rule_if!(self.scales.get(*axis) == Some(&1));
+        }
+        let mut scales = self.scales.clone();
+        rule_if!(change.change_shape_array(&mut scales, false).is_ok());
+        let op = NearestUpsample { scales };
+        Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+    }
+
     as_op!();
 }
 
@@ -928,5 +947,25 @@ mod tests {
         assert!(replicates(CoordTransformer::HalfPixel, Nearest::RoundPreferCeil, 3));
         assert!(!replicates(CoordTransformer::HalfPixel, Nearest::Floor, 2));
         assert!(!replicates(CoordTransformer::Asymmetric, Nearest::RoundPreferCeil, 2));
+    }
+
+    #[test]
+    fn channel_move_folds_into_nearest_upsample() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([1, 5, 7, 3]))?;
+        let nchw = model.wire_node("to_nchw", AxisOp::Move(3, 1), &[x])?;
+        let up = model.wire_node("up", NearestUpsample { scales: tvec![1, 1, 2, 3] }, &nchw)?;
+        let nhwc = model.wire_node("to_nhwc", AxisOp::Move(1, 3), &up)?;
+        model.select_output_outlets(&nhwc)?;
+        let input =
+            Tensor::from_shape(&[1, 5, 7, 3], &(0..105).map(|i| i as f32).collect::<Vec<_>>())?;
+        let reference = model.clone().into_runnable()?.run(tvec!(input.clone().into_tvalue()))?;
+        let decluttered = model.into_decluttered()?;
+        ensure!(!decluttered.nodes().iter().any(|n| n.op_is::<AxisOp>()), "{decluttered}");
+        let scales: Vec<_> =
+            decluttered.nodes().iter().filter_map(|n| n.op_as::<NearestUpsample>()).collect();
+        ensure!(scales.len() == 1 && *scales[0].scales == [1, 2, 3, 1], "{decluttered}");
+        let found = decluttered.into_runnable()?.run(tvec!(input.into_tvalue()))?;
+        found[0].close_enough(&reference[0], Approximation::Exact)
     }
 }
