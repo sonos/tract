@@ -178,8 +178,9 @@ fn flood(model: &TypedModel, start: OutletId, op: AxisOp) -> TractResult<Flood> 
                     .and_then(|(op, _)| op.downcast_ref::<EinSum>())
                     .unwrap_or(einsum)
                     .clone();
-                let Some(AxisChangeConsequence { substitute_op: Some(new_op), wire_changes }) =
-                    current.change_axes(model, node, io, &op)?
+                let Some(AxisChangeConsequence {
+                    substitute_op: Some(new_op), wire_changes, ..
+                }) = current.change_axes(model, node, io, &op)?
                 else {
                     f.boundaries.push((outlet, node_id, "refuses".into(), "EinSum".into()));
                     continue;
@@ -210,7 +211,7 @@ fn flood(model: &TypedModel, start: OutletId, op: AxisOp) -> TractResult<Flood> 
                 continue;
             }
             let answer = node.op.change_axes(model, node, io, &op);
-            let Ok(Some(AxisChangeConsequence { substitute_op, wire_changes })) = answer else {
+            let Ok(Some(AxisChangeConsequence { substitute_op, wire_changes, .. })) = answer else {
                 let reason = match answer {
                     Err(e) => format!("error: {e}"),
                     _ => "refuses".to_string(),
