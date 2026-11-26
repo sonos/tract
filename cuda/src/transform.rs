@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use crate::context::cuda_context;
+use crate::context::with_cuda_stream;
 use crate::ops::wire_cuda_conv;
 use crate::utils::as_ggml_q_fact;
 use crate::{kernels, ops, rewrite_rules};
@@ -88,7 +89,10 @@ impl ModelTransform for CudaTransform {
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        self.transform_up_to_phase(model, usize::MAX)
+        self.transform_up_to_phase(model, usize::MAX)?;
+        // Folding constants evaluates device ops on this thread's stream. A model served from
+        // other threads, each on a stream of its own, must find those constants written.
+        with_cuda_stream(|stream| stream.synchronize().map_err(|e| e.into()))
     }
 }
 
