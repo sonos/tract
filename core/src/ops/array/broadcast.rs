@@ -111,10 +111,9 @@ impl TypedOp for MultiBroadcastTo {
                     return Ok(None);
                 }
             }
-            return Ok(Some(AxisChangeConsequence {
-                wire_changes,
-                substitute_op: Some(Box::new(MultiBroadcastTo { shape })),
-            }));
+            return Ok(Some(
+                AxisChangeConsequence::substitute(MultiBroadcastTo { shape }).wires(wire_changes),
+            ));
         }
         Ok(None)
     }

@@ -163,6 +163,10 @@ fn host(
         .op
         .change_axes(model, node, InOut::In(batched[0]), &change)?
         .context("the op takes no extra leading axis at all")?;
+    ensure!(
+        consequence.input_values.is_empty(),
+        "the op takes an extra leading axis only with new constant inputs"
+    );
     for slot in 0..node.outputs.len() {
         ensure!(
             consequence.wire_changes.contains(&(InOut::Out(slot), change.clone())),

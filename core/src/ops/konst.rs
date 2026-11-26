@@ -122,10 +122,7 @@ impl TypedOp for Const {
                 let changed_fact = change.output_facts(&[&my_fact[0]])?;
                 sub.1 = changed_fact[0].exotic_fact.clone();
             }
-            Ok(Some(AxisChangeConsequence {
-                substitute_op: Some(Box::new(sub)),
-                wire_changes: tvec!((io, change.clone())),
-            }))
+            Ok(Some(AxisChangeConsequence::substitute(sub).wire(io, change)))
         } else {
             Ok(None)
         }

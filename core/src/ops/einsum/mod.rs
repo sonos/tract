@@ -394,10 +394,9 @@ impl TypedOp for EinSum {
         };
         *interface = axes.into_iter().collect();
         let axes = AxesMapping::from_strs(&inputs, &outputs)?;
-        Ok(Some(AxisChangeConsequence {
-            substitute_op: Some(Box::new(EinSum { axes, ..self.clone() })),
-            wire_changes: tvec!((io, change.clone())),
-        }))
+        Ok(Some(
+            AxisChangeConsequence::substitute(EinSum { axes, ..self.clone() }).wire(io, change),
+        ))
     }
 
     fn declutter_with_session(

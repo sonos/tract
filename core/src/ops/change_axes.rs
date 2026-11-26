@@ -647,10 +647,20 @@ pub struct AxisChange {
     pub op: AxisOp,
 }
 
+/// How an op takes an axis change on one of its wires: the op to put in its place (`None` keeps
+/// it), the change every other wire of the op takes, and new values for constant inputs.
+///
+/// `input_values` serves inputs that hold one value per axis of another wire (a resize's scales
+/// or sizes): no `AxisOp` describes how such a vector follows the change, so the op computes it.
+/// The slot's producer must be a `Const`, and the slot takes no wire change; [`change_axes`]
+/// wires each value as a new constant. Callers that cannot do this refuse the change.
+///
+/// [`change_axes`]: crate::optim::change_axes::change_axes
 #[derive(Clone, Default, Debug)]
 pub struct AxisChangeConsequence {
     pub substitute_op: Option<Box<dyn TypedOp>>,
     pub wire_changes: TVec<(InOut, AxisOp)>,
+    pub input_values: TVec<(usize, Arc<Tensor>)>,
 }
 
 impl AxisChangeConsequence {
@@ -660,14 +670,57 @@ impl AxisChangeConsequence {
         op: Option<Box<dyn TypedOp>>,
         axis_op: &AxisOp,
     ) -> AxisChangeConsequence {
-        let mut wire_changes = tvec!();
-        for i in 0..node.inputs.len() {
-            wire_changes.push((InOut::In(i), axis_op.clone()));
-        }
-        for i in 0..node.outputs.len() {
-            wire_changes.push((InOut::Out(i), axis_op.clone()));
-        }
-        AxisChangeConsequence { wire_changes, substitute_op: op }
+        let wires =
+            (0..node.inputs.len()).map(InOut::In).chain((0..node.outputs.len()).map(InOut::Out));
+        AxisChangeConsequence::default().maybe_op(op).wires(wires.map(|io| (io, axis_op.clone())))
+    }
+
+    /// The op is replaced by `op`; no other wire takes a change yet.
+    pub fn substitute(op: impl Into<Box<dyn TypedOp>>) -> AxisChangeConsequence {
+        AxisChangeConsequence::default().with_op(op)
+    }
+
+    /// Replaces the op by `op`.
+    pub fn with_op(mut self, op: impl Into<Box<dyn TypedOp>>) -> AxisChangeConsequence {
+        self.substitute_op = Some(op.into());
+        self
+    }
+
+    /// Replaces the op by `op` when there is one.
+    pub fn maybe_op(mut self, op: Option<impl Into<Box<dyn TypedOp>>>) -> AxisChangeConsequence {
+        self.substitute_op = op.map(Into::into);
+        self
+    }
+
+    /// Wire `io` of the op takes `change`.
+    pub fn wire(mut self, io: InOut, change: &AxisOp) -> AxisChangeConsequence {
+        self.wire_changes.push((io, change.clone()));
+        self
+    }
+
+    /// Input `slot` of the op takes `change`.
+    pub fn wire_in(self, slot: usize, change: &AxisOp) -> AxisChangeConsequence {
+        self.wire(InOut::In(slot), change)
+    }
+
+    /// Output `slot` of the op takes `change`.
+    pub fn wire_out(self, slot: usize, change: &AxisOp) -> AxisChangeConsequence {
+        self.wire(InOut::Out(slot), change)
+    }
+
+    /// Each wire of `changes` takes its change.
+    pub fn wires(
+        mut self,
+        changes: impl IntoIterator<Item = (InOut, AxisOp)>,
+    ) -> AxisChangeConsequence {
+        self.wire_changes.extend(changes);
+        self
+    }
+
+    /// Constant input `slot` takes `value` (see [`AxisChangeConsequence::input_values`]).
+    pub fn input_value(mut self, slot: usize, value: Arc<Tensor>) -> AxisChangeConsequence {
+        self.input_values.push((slot, value));
+        self
     }
 }
 
@@ -920,24 +973,19 @@ impl TypedOp for AxisOp {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let op = if let InOut::Out(0) = io {
             rule_if_some!(more = self.recip().change_axes(_model, _node, InOut::In(0), change)?);
-            AxisChangeConsequence {
-                substitute_op: more.substitute_op.map(|op| {
-                    if let Some(op) = op.as_op().downcast_ref::<AxisOp>() {
-                        Box::new(op.recip())
-                    } else {
-                        op // have to be identity
-                    }
-                }),
-                wire_changes: more
-                    .wire_changes
-                    .into_iter()
-                    .map(|wc| {
-                        (if wc.0 == InOut::In(0) { InOut::Out(0) } else { InOut::In(0) }, wc.1)
-                    })
-                    .collect(),
-            }
+            let flipped = more.wire_changes.into_iter().map(|(io, change)| {
+                (if io == InOut::In(0) { InOut::Out(0) } else { InOut::In(0) }, change)
+            });
+            let substitute = more.substitute_op.map(|op| -> Box<dyn TypedOp> {
+                if let Some(op) = op.as_op().downcast_ref::<AxisOp>() {
+                    Box::new(op.recip())
+                } else {
+                    op // have to be identity
+                }
+            });
+            AxisChangeConsequence::default().maybe_op(substitute).wires(flipped)
         } else if change == self {
-            AxisChangeConsequence { substitute_op: Some(Box::new(Identity)), wire_changes: tvec!() }
+            AxisChangeConsequence::substitute(Identity)
         } else {
             rule_if_some!((new_op, new_change) = self.merge_incoming_change(change));
             trace!("  Change:{change:?} self:{self:?} -> change:{new_change:?} op:{new_op:?}");
@@ -950,7 +998,7 @@ impl TypedOp for AxisOp {
             if let Some(new_change) = new_change {
                 wire_changes.push((InOut::Out(0), new_change))
             }
-            AxisChangeConsequence { substitute_op: Some(substitute_op), wire_changes }
+            AxisChangeConsequence::substitute(substitute_op).wires(wire_changes)
         };
         Ok(Some(op))
     }

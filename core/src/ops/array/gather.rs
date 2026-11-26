@@ -289,12 +289,13 @@ impl TypedOp for Gather {
         };
         rule_if!(in_front);
         rule_if_some!(axis = change.transform_axis(self.axis));
-        let substitute_op =
-            (axis != self.axis).then(|| Box::new(Gather { axis, ..self.clone() }) as _);
-        Ok(Some(AxisChangeConsequence {
-            substitute_op,
-            wire_changes: tvec!((InOut::In(0), change.clone()), (InOut::Out(0), change.clone())),
-        }))
+        let substitute = (axis != self.axis).then(|| Gather { axis, ..self.clone() });
+        Ok(Some(
+            AxisChangeConsequence::default()
+                .maybe_op(substitute)
+                .wire_in(0, change)
+                .wire_out(0, change),
+        ))
     }
 
     fn declutter(
