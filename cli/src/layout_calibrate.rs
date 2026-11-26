@@ -96,7 +96,12 @@ fn depthwise_key(model: &TypedModel, node: &TypedNode) -> TractResult<String> {
     let c = i[c_axis];
     let taps = (volume(kernel) as usize) / c.max(1);
     let stride = i[c_axis + 1] / o[c_axis + 1].max(1);
-    Ok(format!("depthwise taps{taps} s{stride} c<={}", bucket(c, &[16, 32, 64, 128, 256, 512])))
+    let width = o[o.len() - 1];
+    Ok(format!(
+        "depthwise c<={} w<={} s{stride} taps{taps}",
+        bucket(c, &[64, 256]),
+        bucket(width, &[8, 20, 40])
+    ))
 }
 
 /// The op key, work unit and work of each node of a channel-first plan.
@@ -242,23 +247,20 @@ pub fn predict_command() -> clap::Command {
 }
 
 impl Table {
-    /// Channel-last over channel-first time, and channel-first time per unit of work, for `key`; keys absent from the
-    /// table fall back to all entries of the same op.
+    /// Channel-last over channel-first time, and channel-first time per unit of work, for `key`. A key absent from the
+    /// table uses all entries sharing its longest present prefix of space-separated tokens.
     fn lookup(&self, key: &str) -> Option<(f64, f64)> {
-        let op = key.split(' ').next().unwrap_or(key);
-        let entries: Vec<&Entry> = match self.entries.get(key) {
-            Some(e) => vec![e],
-            None => self
+        let tokens: Vec<&str> = key.split(' ').collect();
+        (1..=tokens.len()).rev().find_map(|n| {
+            let (cf, cl, work) = self
                 .entries
                 .iter()
-                .filter(|(k, _)| k.split(' ').next() == Some(op))
-                .map(|(_, e)| e)
-                .collect(),
-        };
-        let (cf, cl, work) = entries.iter().fold((0.0, 0.0, 0.0), |(a, b, c), e| {
-            (a + e.channel_first_secs, b + e.channel_last_secs, c + e.channel_first_work)
-        });
-        (cf > 0.0 && work > 0.0).then_some((cl / cf, cf / work))
+                .filter(|(k, _)| k.split(' ').take(n).eq(tokens[..n].iter().copied()))
+                .fold((0.0, 0.0, 0.0), |(a, b, c), (_, e)| {
+                    (a + e.channel_first_secs, b + e.channel_last_secs, c + e.channel_first_work)
+                });
+            (cf > 0.0 && work > 0.0).then_some((cl / cf, cf / work))
+        })
     }
 }
 
