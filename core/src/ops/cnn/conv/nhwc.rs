@@ -167,6 +167,25 @@ mod tests {
         );
     }
 
+    #[test]
+    fn depthwise_stays_channel_first_when_disabled() {
+        if tract_linalg::routines::depthwise_c_f32().is_none() {
+            return;
+        }
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([1, 32, 8, 8])).unwrap();
+        let x = conv_op(&mut model, "pw1", x, 32, 32, 1, 1);
+        let x = conv_op(&mut model, "dw", x, 32, 32, 32, 3);
+        let x = conv_op(&mut model, "pw2", x, 32, 32, 1, 1);
+        model.select_output_outlets(&[x]).unwrap();
+        let scope =
+            tract_data::knobs::KnobScope::new([("TRACT_DISABLE_DEPTHWISE_CHANNEL_LAST", "true")])
+                .unwrap();
+        let model = scope.enter(|| model.into_decluttered()).unwrap();
+        let dw = depthwise_in(&model).expect("depthwise conv was lowered too early");
+        assert!(!dw.pool_spec.data_format.c_is_last(), "{model}");
+    }
+
     /// A regular conv forwards the c-to-last move to its own input instead of
     /// absorbing it, so a depthwise conv sitting directly behind a stem keeps
     /// propagating until it hits the locked model input and the suggestion is

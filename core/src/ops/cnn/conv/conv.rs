@@ -27,6 +27,14 @@ use crate::ops::matmul::pack::{OptMatMulPack, OptSimpleMatMulPack};
 use crate::ops::matmul::quant::wire_ensure_q8_flavour;
 use crate::ops::nn::Reduce;
 
+crate::declare_knob!(
+    scopable TRACT_DISABLE_DEPTHWISE_CHANNEL_LAST,
+    bool,
+    false,
+    "Stop depthwise convolutions from asking declutter to move their channel axis last on hosts with a \
+     channel-last depthwise kernel. Read at declutter time."
+);
+
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
 use crate::ops::cnn::conv::KernelFormat;
@@ -1293,7 +1301,7 @@ impl TypedOp for Conv {
     /// `change_axes`), nothing changes. Below 16 channels the channel-inner
     /// path cannot fill a vector, so W-inner stays the better default. Hosts
     /// without a `depthwise_c_f32` kernel get no suggestion: their channel-last
-    /// path is scalar.
+    /// path is scalar. `TRACT_DISABLE_DEPTHWISE_CHANNEL_LAST` turns the suggestion off.
     fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
         if tract_linalg::routines::depthwise_c_f32().is_none() {
             return Ok(tvec!());
@@ -1303,6 +1311,9 @@ impl TypedOp for Conv {
             && self.group == self.input_channels()
             && self.group == self.output_channels();
         if !depthwise || self.q_params.is_some() || self.input_channels() < 16 || fmt.c_is_last() {
+            return Ok(tvec!());
+        }
+        if TRACT_DISABLE_DEPTHWISE_CHANNEL_LAST.get() {
             return Ok(tvec!());
         }
         let rank = self.pool_spec.rank() + 1 + fmt.has_n() as usize;
