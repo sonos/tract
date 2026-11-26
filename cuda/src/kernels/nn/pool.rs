@@ -108,3 +108,65 @@ crate::register_cuda_op!(MaxPool, |source, node, _op| try_make_cuda_pool(source,
 crate::register_cuda_op!(SumPool, |source, node, _op| try_make_cuda_pool(source, node));
 crate::register_cuda_op!(OptMaxPool, |source, node, _op| try_make_cuda_pool(source, node));
 crate::register_cuda_op!(OptSumPool, |source, node, _op| try_make_cuda_pool(source, node));
+
+#[cfg(test)]
+mod tests {
+    use crate::CudaTransform;
+    use tract_core::internal::*;
+    use tract_core::ops::cnn::{MaxPool, PaddingSpec, PoolSpec, SumPool};
+    use tract_core::ops::nn::DataFormat;
+    use tract_core::transform::ModelTransform;
+    use tract_gpu::ops::pool::GpuPool;
+
+    /// Max and average pools in every data format, with and without a batch axis, over one and
+    /// two spatial axes: each must be translated to the device and match the CPU.
+    #[test]
+    fn pools_in_every_layout_run_on_device() -> TractResult<()> {
+        let c = 5;
+        for format in [DataFormat::NCHW, DataFormat::NHWC, DataFormat::CHW, DataFormat::HWC] {
+            for hw in [vec![9usize, 11], vec![13]] {
+                let rank = hw.len();
+                let spec = PoolSpec::new(
+                    format,
+                    tvec![3; rank],
+                    PaddingSpec::SameUpper,
+                    None,
+                    Some(tvec![2; rank]),
+                    c,
+                    c,
+                );
+                let shape = format.from_n_c_hw(2, c, &*hw)?.shape;
+                for max in [true, false] {
+                    let op: Box<dyn TypedOp> = if max {
+                        Box::new(MaxPool::new(spec.clone(), None))
+                    } else {
+                        Box::new(SumPool::new(spec.clone(), false, true))
+                    };
+                    let case = format!("{format:?} {hw:?} max={max}");
+                    let len: usize = shape.iter().product();
+                    let values: Vec<f32> =
+                        (0..len).map(|i| ((i * 37) % 101) as f32 - 50.0).collect();
+                    let input = Tensor::from_shape(&shape, &values)?;
+                    let mut model = TypedModel::default();
+                    let i = model.add_source("i", f32::fact(&*shape))?;
+                    let out = model.wire_node("pool", op, &[i])?;
+                    model.select_output_outlets(&out)?;
+                    let cpu =
+                        model.clone().into_runnable()?.run(tvec![input.clone().into_tvalue()])?;
+                    let cuda = CudaTransform.transform_into(model)?;
+                    ensure!(
+                        cuda.nodes().iter().any(|n| n.op_is::<GpuPool>()),
+                        "{case}: the pool did not reach the device"
+                    );
+                    let got = cuda.into_runnable()?.run(tvec![input.into_tvalue()])?;
+                    cpu[0]
+                        .clone()
+                        .into_tensor()
+                        .close_enough(&got[0].clone().into_tensor(), Approximation::Approximate)
+                        .with_context(|| case.clone())?;
+                }
+            }
+        }
+        Ok(())
+    }
+}

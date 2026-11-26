@@ -1,7 +1,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// 2D pooling over a channels-last tensor. One thread owns one (n, oh, ow, c),
+// 2D pooling over a channels-last tensor; channels-first variants of both
+// kernels come last. One thread owns one (n, oh, ow, c),
 // so consecutive threads walk the contiguous channel axis and every window read
 // is coalesced.
 //
@@ -152,6 +153,49 @@ template <typename T>
     output[(plane * p.oh + oh) * p.ow + ow] = best;
 }
 
+// Channels-first sum, laid out as max_pool_2d_nchw.
+template <typename T>
+[[kernel]] void sum_pool_2d_nchw(
+    const device T* input [[buffer(0)]],
+    device T* output [[buffer(1)]],
+    const constant PoolParams& p [[buffer(2)]],
+    uint3 gid [[thread_position_in_grid]]) {
+    const int ow = int(gid.x);
+    const int oh = int(gid.y);
+    const int rest = int(gid.z);
+    const int c = rest % p.c;
+    const int n = rest / p.c;
+    if (ow >= p.ow || oh >= p.oh || n >= p.n) {
+        return;
+    }
+
+    const int h_start = oh * p.stride_h - p.pad_h;
+    const int w_start = ow * p.stride_w - p.pad_w;
+    const int64_t plane = (int64_t(n) * p.c + c);
+
+    float acc = 0.0f;
+    int counted = 0;
+    for (int kh = 0; kh < p.kh; ++kh) {
+        const int ih = h_start + kh * p.dil_h;
+        if (ih < 0 || ih >= p.ih) {
+            continue;
+        }
+        for (int kw = 0; kw < p.kw; ++kw) {
+            const int iw = w_start + kw * p.dil_w;
+            if (iw < 0 || iw >= p.iw) {
+                continue;
+            }
+            acc += float(input[(plane * p.ih + ih) * p.iw + iw]);
+            counted += 1;
+        }
+    }
+    if (p.normalize) {
+        const int divisor = p.count_include_pad ? (p.kh * p.kw) : max(counted, 1);
+        acc /= float(divisor);
+    }
+    output[(plane * p.oh + oh) * p.ow + ow] = T(acc);
+}
+
 #define instantiate_pool(name, tname, itype)                                  \
     template [[host_name(#name "_" #tname)]] [[kernel]] void name<itype>(     \
         const device itype* input [[buffer(0)]],                              \
@@ -165,3 +209,5 @@ instantiate_pool(sum_pool_2d, f32, float)
 instantiate_pool(sum_pool_2d, f16, half)
 instantiate_pool(max_pool_2d_nchw, f32, float)
 instantiate_pool(max_pool_2d_nchw, f16, half)
+instantiate_pool(sum_pool_2d_nchw, f32, float)
+instantiate_pool(sum_pool_2d_nchw, f16, half)

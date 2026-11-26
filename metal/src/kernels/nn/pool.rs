@@ -1,4 +1,4 @@
-//! 2D max and sum pooling on channels-last tensors (see pool.metal).
+//! 1D and 2D max and sum pooling, channels-last or channels-first (see pool.metal).
 //!
 //! Pooling had no Metal kernel, so a pooled model bounced back to the host at
 //! every pool: on Inception v3 that was 14 device syncs and a fifth of the
@@ -6,11 +6,10 @@
 
 use crate::LibraryName;
 use crate::encoder::EncoderExt;
-use anyhow::ensure;
 use metal::MTLSize;
 use tract_core::internal::*;
 use tract_core::ops::cnn::{MaxPool, OptMaxPool, OptSumPool, PoolSpec, SumPool};
-use tract_gpu::ops::pool::{GpuPool, PoolKind};
+use tract_gpu::ops::pool::{GpuPool, PoolGeometry2d, PoolKind};
 use tract_gpu::tensor::DeviceTensor;
 
 /// Mirror of `PoolParams` in pool.metal — keep field order in sync.
@@ -35,16 +34,11 @@ struct PoolParams {
     normalize: i32,
 }
 
-/// Whether the kernel covers this pooling: rank-4 f16/f32 with static geometry
-/// and no index output. Max pooling has a channels-first variant too; sum
-/// pooling stays channels-last.
-pub fn metal_pool_supported(pool_spec: &PoolSpec, kind: PoolKind, fact: &TypedFact) -> bool {
-    let layout_ok = pool_spec.data_format.c_is_last()
-        || (kind == PoolKind::Max && pool_spec.data_format.has_n());
+/// Whether the kernel covers this pooling: f16/f32 over one or two spatial axes with a static
+/// shape and no index output, in any data format, with or without a batch axis.
+pub fn metal_pool_supported(pool_spec: &PoolSpec, fact: &TypedFact) -> bool {
     matches!(fact.datum_type, DatumType::F16 | DatumType::F32)
-        && layout_ok
-        && fact.rank() == 4
-        && pool_spec.kernel_shape.len() == 2
+        && matches!(pool_spec.kernel_shape.len(), 1 | 2)
         && fact.shape.as_concrete().is_some()
 }
 
@@ -60,43 +54,38 @@ pub fn dispatch_metal_pool(
         DatumType::F16 => "f16",
         _ => bail!("Metal pool: F32/F16 only, got {dt:?}"),
     };
-    let in_shape = pool_spec.data_format.shape(input.shape())?;
-    let out_shape = pool_spec.data_format.shape(output.shape())?;
-    ensure!(in_shape.hw_rank() == 2, "Metal pool is 2D only");
-
-    let strides = pool_spec.strides();
-    let dilations = pool_spec.dilations();
-    let padding = pool_spec.computed_padding(in_shape.hw_dims());
+    let g = PoolGeometry2d::new(pool_spec, input.shape(), output.shape())?
+        .context("Metal pool is 1D or 2D")?;
     let (count_include_pad, normalize) = match kind {
         PoolKind::Max => (false, false),
         PoolKind::Sum { count_include_pad, normalize } => (count_include_pad, normalize),
     };
     let params = PoolParams {
-        n: *in_shape.n().unwrap_or(&1) as i32,
-        ih: in_shape.hw_dims()[0] as i32,
-        iw: in_shape.hw_dims()[1] as i32,
-        c: *in_shape.c() as i32,
-        oh: out_shape.hw_dims()[0] as i32,
-        ow: out_shape.hw_dims()[1] as i32,
-        kh: pool_spec.kernel_shape[0] as i32,
-        kw: pool_spec.kernel_shape[1] as i32,
-        stride_h: strides[0] as i32,
-        stride_w: strides[1] as i32,
-        pad_h: padding[0].pad_before as i32,
-        pad_w: padding[1].pad_before as i32,
-        dil_h: dilations[0] as i32,
-        dil_w: dilations[1] as i32,
+        n: g.n as i32,
+        ih: g.ih as i32,
+        iw: g.iw as i32,
+        c: g.c as i32,
+        oh: g.oh as i32,
+        ow: g.ow as i32,
+        kh: g.kh as i32,
+        kw: g.kw as i32,
+        stride_h: g.stride_h as i32,
+        stride_w: g.stride_w as i32,
+        pad_h: g.pad_h as i32,
+        pad_w: g.pad_w as i32,
+        dil_h: g.dil_h as i32,
+        dil_w: g.dil_w as i32,
         count_include_pad: count_include_pad as i32,
         normalize: normalize as i32,
     };
 
-    let channels_last = pool_spec.data_format.c_is_last();
-    let base = match kind {
-        PoolKind::Max if channels_last => "max_pool_2d",
-        PoolKind::Max => "max_pool_2d_nchw",
-        PoolKind::Sum { .. } => "sum_pool_2d",
+    let channels_last = g.channels_last;
+    let base = match (kind, channels_last) {
+        (PoolKind::Max, true) => "max_pool_2d",
+        (PoolKind::Max, false) => "max_pool_2d_nchw",
+        (PoolKind::Sum { .. }, true) => "sum_pool_2d",
+        (PoolKind::Sum { .. }, false) => "sum_pool_2d_nchw",
     };
-    ensure!(channels_last || kind == PoolKind::Max, "Metal sum pool is channels-last only");
     crate::with_metal_stream(|stream| {
         let pipeline = stream.load_pipeline(LibraryName::NNOps, &format!("{base}_{tname}"))?;
 
@@ -130,7 +119,7 @@ fn try_make_metal_pool(
 ) -> TractResult<Option<Box<dyn TypedOp>>> {
     let facts = source.node_input_facts(node.id)?;
     rule_if_some!(op = GpuPool::from_core(node.op.as_ref(), "Metal", dispatch_metal_pool));
-    rule_if!(metal_pool_supported(&op.pool_spec, op.kind, facts[0]));
+    rule_if!(metal_pool_supported(&op.pool_spec, facts[0]));
     Ok(Some(Box::new(op)))
 }
 
@@ -336,6 +325,59 @@ mod tests {
             .clone()
             .into_tensor()
             .close_enough(&got[0].clone().into_tensor(), Approximation::Approximate)?;
+        Ok(())
+    }
+
+    /// Max and average pools in every data format, with and without a batch axis, over one and
+    /// two spatial axes: each must be translated to the device and match the CPU.
+    #[test]
+    fn pools_in_every_layout_run_on_device() -> TractResult<()> {
+        let c = 5;
+        for format in [DataFormat::NCHW, DataFormat::NHWC, DataFormat::CHW, DataFormat::HWC] {
+            for hw in [vec![9usize, 11], vec![13]] {
+                let rank = hw.len();
+                let spec = PoolSpec::new(
+                    format,
+                    tvec![3; rank],
+                    PaddingSpec::SameUpper,
+                    None,
+                    Some(tvec![2; rank]),
+                    c,
+                    c,
+                );
+                let shape = format.from_n_c_hw(2, c, &*hw)?.shape;
+                for max in [true, false] {
+                    let op: Box<dyn TypedOp> = if max {
+                        Box::new(MaxPool::new(spec.clone(), None))
+                    } else {
+                        Box::new(SumPool::new(spec.clone(), false, true))
+                    };
+                    let case = format!("{format:?} {hw:?} max={max}");
+                    let input = ramp(DatumType::F32, &shape)?;
+                    let mut model = TypedModel::default();
+                    let i = model.add_source("i", f32::fact(&*shape))?;
+                    let out = model.wire_node("pool", op, &[i])?;
+                    model.select_output_outlets(&out)?;
+                    let cpu = model
+                        .clone()
+                        .into_optimized()?
+                        .into_runnable()?
+                        .run(tvec![input.clone().into_tvalue()])?;
+                    let metal =
+                        MetalTransform::default().transform_into(model.into_optimized()?)?;
+                    ensure!(
+                        metal.nodes().iter().any(|n| n.op_is::<GpuPool>()),
+                        "{case}: the pool did not reach the device"
+                    );
+                    let got = metal.into_runnable()?.run(tvec![input.into_tvalue()])?;
+                    cpu[0]
+                        .clone()
+                        .into_tensor()
+                        .close_enough(&got[0].clone().into_tensor(), Approximation::Approximate)
+                        .with_context(|| case.clone())?;
+                }
+            }
+        }
         Ok(())
     }
 }
