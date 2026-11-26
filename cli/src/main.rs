@@ -386,6 +386,7 @@ fn main() -> TractResult<()> {
     app = app.subcommand(dump_subcommand());
     app = app.subcommand(layout_report::command());
     app = app.subcommand(bench_options(run_options(layout_calibrate::command())));
+    app = app.subcommand(bench_options(run_options(layout_calibrate::predict_command())));
 
     let run = clap::Command::new("run")
         .long_about("Run the graph")
@@ -1130,6 +1131,10 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         Some(("layout-report", m)) => layout_report::handle(&params, m),
 
         Some(("layout-calibrate", m)) => layout_calibrate::handle(&params, &matches, m, probe),
+
+        Some(("layout-predict", m)) => {
+            layout_calibrate::handle_predict(&params, &matches, m, probe)
+        }
 
         None => dump::handle(
             &params,

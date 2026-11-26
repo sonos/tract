@@ -11,9 +11,14 @@
 //!
 //! The two plans only differ on hosts where declutter flips depthwise convolutions, i.e. that have a channel-last
 //! depthwise kernel.
+//!
+//! `tract <model> -O layout-predict --table <file>` uses such a table to predict, without running the model, the time
+//! change of that flip: node times are estimated as work times the table's rate for their key, and the nodes the flip
+//! changes contribute their estimate times the key's ratio minus one.
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -214,5 +219,160 @@ pub fn handle(
         );
     }
     std::fs::write(table_path, serde_json::to_string_pretty(&table)?)?;
+    Ok(())
+}
+
+pub fn predict_command() -> clap::Command {
+    clap::Command::new("layout-predict")
+        .about("Predict the time change of the channel-last depthwise flip from a layout-calibrate table")
+        .arg(clap::Arg::new("table").long("table").num_args(1).required(true).help("Table written by layout-calibrate"))
+        .arg(
+            clap::Arg::new("margin")
+                .long("margin")
+                .num_args(1)
+                .default_value("5")
+                .help("Flip only when the predicted gain exceeds this many percent"),
+        )
+        .arg(
+            clap::Arg::new("measure")
+                .long("measure")
+                .action(clap::ArgAction::SetTrue)
+                .help("Also profile both plans and print the measured change"),
+        )
+}
+
+impl Table {
+    /// Channel-last over channel-first time, and channel-first time per unit of work, for `key`; keys absent from the
+    /// table fall back to all entries of the same op.
+    fn lookup(&self, key: &str) -> Option<(f64, f64)> {
+        let op = key.split(' ').next().unwrap_or(key);
+        let entries: Vec<&Entry> = match self.entries.get(key) {
+            Some(e) => vec![e],
+            None => self
+                .entries
+                .iter()
+                .filter(|(k, _)| k.split(' ').next() == Some(op))
+                .map(|(_, e)| e)
+                .collect(),
+        };
+        let (cf, cl, work) = entries.iter().fold((0.0, 0.0, 0.0), |(a, b, c), e| {
+            (a + e.channel_first_secs, b + e.channel_last_secs, c + e.channel_first_work)
+        });
+        (cf > 0.0 && work > 0.0).then_some((cl / cf, cf / work))
+    }
+}
+
+fn signatures(model: &TypedModel) -> HashMap<String, String> {
+    model
+        .nodes()
+        .iter()
+        .map(|n| {
+            (
+                n.name.clone(),
+                format!("{} {:?}", n.op.name(), n.outputs.first().map(|o| &o.fact.shape)),
+            )
+        })
+        .collect()
+}
+
+/// The nodes of the channel-first plan the flip changes: those whose op or output shape differ in the channel-last
+/// plan, the nodes consuming them, and the packing and im2col nodes feeding a changed matrix product.
+fn region(cf: &TypedModel, cl_signatures: &HashMap<String, String>) -> HashSet<usize> {
+    let cf_signatures = signatures(cf);
+    let changed: HashSet<usize> = cf
+        .nodes()
+        .iter()
+        .filter(|n| {
+            cl_signatures.get(&n.name).is_some_and(|s| Some(s) != cf_signatures.get(&n.name))
+        })
+        .map(|n| n.id)
+        .collect();
+    let mut region = changed.clone();
+    for node in cf.nodes() {
+        if node.inputs.iter().any(|i| changed.contains(&i.node)) {
+            region.insert(node.id);
+        }
+    }
+    for node in cf.nodes() {
+        let name = node.op.name();
+        if (name == "OptMatMulPack" || name.to_lowercase().contains("im2col"))
+            && node.outputs.iter().flat_map(|o| &o.successors).any(|s| region.contains(&s.node))
+        {
+            region.insert(node.id);
+        }
+    }
+    region
+}
+
+/// `params` is the model as declutter leaves it; the channel-first plan is rebuilt from `matches` with the depthwise
+/// channel-last suggestion disabled. Node times are estimated from their work and the table's rates, so nothing runs
+/// unless `--measure` is given.
+pub fn handle_predict(
+    params: &Parameters,
+    matches: &clap::ArgMatches,
+    sub: &clap::ArgMatches,
+    probe: Option<&Probe>,
+) -> TractResult<()> {
+    let table_path = sub.get_one::<String>("table").unwrap();
+    let table: Table = serde_json::from_str(&std::fs::read_to_string(table_path)?)
+        .with_context(|| format!("Reading table {table_path}"))?;
+    let margin: f64 = sub.get_one::<String>("margin").unwrap().parse()?;
+    let cl_model = params
+        .tract_model
+        .downcast_ref::<TypedModel>()
+        .context("layout-predict needs a typed model (pass -O)")?;
+    let cl_signatures = signatures(cl_model);
+    let scope =
+        tract_core::knobs::KnobScope::new([("TRACT_DISABLE_DEPTHWISE_CHANNEL_LAST", "true")])?;
+    let cf_params = scope.enter(|| Parameters::from_clap(matches, probe))?;
+    let cf_model = cf_params
+        .tract_model
+        .downcast_ref::<TypedModel>()
+        .context("layout-predict needs a typed model (pass -O)")?;
+    let keys = keys(cf_model)?;
+    let region = region(cf_model, &cl_signatures);
+    let (mut total, mut delta, mut unknown) = (0.0, 0.0, 0);
+    let mut by_key: HashMap<&str, f64> = HashMap::new();
+    for node in cf_model.nodes() {
+        let Some((key, _, work)) = keys.get(&node.name) else { continue };
+        let Some((ratio, rate)) = table.lookup(key) else {
+            if *work > 0.0 {
+                unknown += 1;
+            }
+            continue;
+        };
+        let estimate = work * rate;
+        total += estimate;
+        if region.contains(&node.id) {
+            delta += estimate * (ratio - 1.0);
+            *by_key.entry(key.as_str()).or_default() += estimate * (ratio - 1.0);
+        }
+    }
+    let predicted = if total > 0.0 { 100.0 * delta / total } else { 0.0 };
+    let decision = if predicted < -margin { "flip channel-last" } else { "keep channel-first" };
+    println!(
+        "layout-predict: {} of {} nodes change, predicted {predicted:+.1}% ({decision}, margin {margin}%)",
+        region.len(),
+        cf_model.nodes().len()
+    );
+    let mut contributions: Vec<_> = by_key.into_iter().collect();
+    contributions.sort_by(|a, b| b.1.abs().total_cmp(&a.1.abs()));
+    for (key, d) in contributions.iter().take(6) {
+        println!("  {key:50} {:+6.1}%", 100.0 * d / total);
+    }
+    if unknown > 0 {
+        println!("  {unknown} nodes with work have no table entry and count for nothing");
+    }
+    if sub.get_flag("measure") {
+        let cl = measure(params, sub)?;
+        let cf = scope.enter(|| measure(&cf_params, sub))?;
+        let (a, b) = (cf.secs.values().sum::<f64>(), cl.secs.values().sum::<f64>());
+        println!(
+            "layout-predict: measured {:+.1}% ({:.2} -> {:.2} ms)",
+            100.0 * (b / a - 1.0),
+            a * 1e3,
+            b * 1e3
+        );
+    }
     Ok(())
 }
