@@ -453,6 +453,33 @@ impl TypedOp for Resize {
         Ok(tvec!(inputs[0].datum_type.fact(&output_shape)))
     }
 
+    /// Axis moves, added axes, and removing an axis the resize leaves alone. Data and output take
+    /// the change; constant scales or sizes are rewritten to follow it (`input_values`), an added
+    /// axis getting scale or size 1. A scales or sizes input that is not constant refuses.
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        rule_if!(io == InOut::In(0) || io == InOut::Out(0));
+        let rank = model.outlet_fact(node.inputs[0])?.rank();
+        let mut consequence =
+            AxisChangeConsequence::substitute(self.clone()).wire_in(0, change).wire_out(0, change);
+        for slot in [self.optional_scales_input, self.optional_sizes_input].into_iter().flatten() {
+            rule_if_some!(input = node.inputs.get(slot));
+            rule_if_some!(values = &model.outlet_fact(*input)?.konst);
+            if values.len() == 0 {
+                continue;
+            }
+            rule_if!(values.rank() == 1 && values.len() == rank);
+            rule_if_some!(values = per_axis_values_follow(values, change)?);
+            consequence = consequence.input_value(slot, values.into_arc_tensor());
+        }
+        Ok(Some(consequence))
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,
@@ -491,6 +518,26 @@ impl TypedOp for Resize {
 
         lower_nearest_integer_upsample(model, node, &int_scales)
     }
+}
+
+/// A vector of one scale or size per axis, after `change` applies to those axes: a move permutes
+/// it, an added axis gets 1, a removed axis must hold 1. `None` for other changes.
+fn per_axis_values_follow(values: &Tensor, change: &AxisOp) -> TractResult<Option<Tensor>> {
+    let one = tensor1(&[1i64]).cast_to_dt(values.datum_type())?.into_owned();
+    let mut items: Vec<Tensor> =
+        (0..values.len()).map(|i| values.nth(i)?.into_shape(&[1])).collect::<TractResult<_>>()?;
+    match *change {
+        AxisOp::Move(from, to) if from < items.len() && to < items.len() => {
+            let item = items.remove(from);
+            items.insert(to, item);
+        }
+        AxisOp::Add(at) if at <= items.len() => items.insert(at, one),
+        AxisOp::Rm(at) if at < items.len() && items[at] == one => {
+            items.remove(at);
+        }
+        _ => return Ok(None),
+    }
+    Tensor::stack_tensors(0, &items).map(Some)
 }
 
 /// Integer nearest upsample, one scale per input axis. Output axis `a` has
@@ -967,5 +1014,36 @@ mod tests {
         ensure!(scales.len() == 1 && *scales[0].scales == [1, 2, 3, 1], "{decluttered}");
         let found = decluttered.into_runnable()?.run(tvec!(input.into_tvalue()))?;
         found[0].close_enough(&reference[0], Approximation::Exact)
+    }
+
+    #[test]
+    fn channel_move_folds_into_resize() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([1, 5, 6, 3]))?;
+        let nchw = model.wire_node("to_nchw", AxisOp::Move(3, 1), &[x])?[0];
+        let scales = model.add_const("scales", tensor1(&[1f32, 1.0, 2.0, 1.5]))?;
+        let op = Resize {
+            coord_transformer: CoordTransformer::HalfPixel,
+            interpolator: Interpolator::Linear,
+            nearest: Nearest::Floor,
+            optional_scales_input: Some(1),
+            optional_sizes_input: None,
+        };
+        let resized = model.wire_node("resize", op, &[nchw, scales])?;
+        let nhwc = model.wire_node("to_nhwc", AxisOp::Move(1, 3), &resized)?;
+        model.select_output_outlets(&nhwc)?;
+        let input = Tensor::from_shape(
+            &[1, 5, 6, 3],
+            &(0..90).map(|i| (i % 11) as f32).collect::<Vec<_>>(),
+        )?;
+        let reference = model.clone().into_runnable()?.run(tvec!(input.clone().into_tvalue()))?;
+        let decluttered = model.into_decluttered()?;
+        ensure!(!decluttered.nodes().iter().any(|n| n.op_is::<AxisOp>()), "{decluttered}");
+        let resize =
+            decluttered.nodes().iter().find(|n| n.op_is::<Resize>()).context("no resize")?;
+        let scales = decluttered.outlet_fact(resize.inputs[1])?.konst.clone().context("scales")?;
+        ensure!(*scales == tensor1(&[1f32, 2.0, 1.5, 1.0]), "{decluttered}");
+        let found = decluttered.into_runnable()?.run(tvec!(input.into_tvalue()))?;
+        found[0].close_enough(&reference[0], Approximation::Close)
     }
 }
