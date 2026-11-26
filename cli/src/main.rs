@@ -44,6 +44,7 @@ mod cost;
 mod cost_model;
 mod dump;
 mod hwbench;
+mod layout_calibrate;
 mod layout_report;
 #[cfg(feature = "transformers")]
 mod llm;
@@ -384,6 +385,7 @@ fn main() -> TractResult<()> {
 
     app = app.subcommand(dump_subcommand());
     app = app.subcommand(layout_report::command());
+    app = app.subcommand(bench_options(run_options(layout_calibrate::command())));
 
     let run = clap::Command::new("run")
         .long_about("Run the graph")
@@ -1126,6 +1128,8 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         Some(("run", m)) => run::handle(&params, &matches, m),
 
         Some(("layout-report", m)) => layout_report::handle(&params, m),
+
+        Some(("layout-calibrate", m)) => layout_calibrate::handle(&params, &matches, m, probe),
 
         None => dump::handle(
             &params,
