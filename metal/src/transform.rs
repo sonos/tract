@@ -5,6 +5,7 @@ use std::str::FromStr;
 use std::sync::OnceLock;
 
 use crate::context::metal_context;
+use crate::context::with_metal_stream;
 use crate::kernels::matmul::{
     GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm, MppGemm, ggml_quant_of_fact,
 };
@@ -206,7 +207,10 @@ impl ModelTransform for MetalTransform {
         // inventory registrations.
         crate::kernels::nn::pool::link_translators();
 
-        self.transform_up_to_phase(model, usize::MAX)
+        self.transform_up_to_phase(model, usize::MAX)?;
+        // Folding constants evaluates device ops on this thread's stream. A model served from
+        // other threads, each on a stream of its own, must find those constants written.
+        with_metal_stream(|stream| stream.wait_until_completed())
     }
 }
 
