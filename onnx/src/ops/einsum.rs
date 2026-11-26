@@ -99,7 +99,7 @@ fn resolve_ellipsis(expr: &AxesMapping, ranks: &[usize]) -> TractResult<AxesMapp
             }
         })
         .collect();
-    let max_axes = *elipsed_axes.iter().max().unwrap();
+    let max_axes = elipsed_axes.iter().max().copied().unwrap_or(0);
     let axis_resolved: String = ('a'..)
         .filter(|l| expr.iter_all_axes().all(|axis| *l != axis.repr))
         .take(max_axes)
@@ -159,5 +159,11 @@ mod test {
     fn test_resolve_ellipsis_in_first_input_only() {
         let expr: AxesMapping = "*j,jk->*k".parse().unwrap();
         assert_eq!(resolve_ellipsis(&expr, &[3, 2]).unwrap().to_string(), "abj,jk->abk");
+    }
+
+    #[test]
+    fn test_resolve_ellipsis_in_output_only() {
+        let expr: AxesMapping = "ij->*ij".parse().unwrap();
+        assert_eq!(resolve_ellipsis(&expr, &[2]).unwrap().to_string(), "ij->ij");
     }
 }
