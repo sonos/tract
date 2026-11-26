@@ -1320,10 +1320,7 @@ impl TypedOp for Conv {
         rule_if!(io != InOut::In(1));
         if io == InOut::In(2) {
             rule_if!(matches!(change, AxisOp::Rm(_)));
-            return Ok(Some(AxisChangeConsequence {
-                substitute_op: Some(Box::new(self.clone())),
-                wire_changes: tvec!(),
-            }));
+            return Ok(Some(AxisChangeConsequence::substitute(self.clone())));
         }
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let shape = self.pool_spec.data_format.shape(full_input_shape.clone())?;
@@ -1331,26 +1328,18 @@ impl TypedOp for Conv {
         // one is the inverse of disposing of it: the format gains its n.
         if shape.n_axis().is_none() && change == &AxisOp::Add(0) {
             let op = Conv { pool_spec: self.pool_spec.with_n_axis(), ..self.clone() };
-            return Ok(Some(AxisChangeConsequence {
-                substitute_op: Some(Box::new(op)),
-                wire_changes: tvec!(
-                    (InOut::In(0), change.clone()),
-                    (InOut::Out(0), change.clone())
-                ),
-            }));
+            return Ok(Some(
+                AxisChangeConsequence::substitute(op).wire_in(0, change).wire_out(0, change),
+            ));
         }
         // remove n
         if let Some(n) = shape.n_axis() {
             assert_eq!(n, 0);
             if change == &AxisOp::Rm(n) {
                 let op = Conv { pool_spec: self.pool_spec.dispose_n_axis(), ..self.clone() };
-                return Ok(Some(AxisChangeConsequence {
-                    substitute_op: Some(Box::new(op)),
-                    wire_changes: tvec!(
-                        (InOut::In(0), change.clone()),
-                        (InOut::Out(0), change.clone())
-                    ),
-                }));
+                return Ok(Some(
+                    AxisChangeConsequence::substitute(op).wire_in(0, change).wire_out(0, change),
+                ));
             }
             rule_if!(change.transform_axis(n).map(|axis| axis == 0).unwrap_or(false));
         }
@@ -1368,13 +1357,9 @@ impl TypedOp for Conv {
         if *change == axis_move {
             let mut new_op = self.clone();
             new_op.pool_spec.data_format = new_format;
-            return Ok(Some(AxisChangeConsequence {
-                substitute_op: Some(Box::new(new_op)),
-                wire_changes: tvec!(
-                    (InOut::In(0), change.clone()),
-                    (InOut::Out(0), change.clone())
-                ),
-            }));
+            return Ok(Some(
+                AxisChangeConsequence::substitute(new_op).wire_in(0, change).wire_out(0, change),
+            ));
         }
         // geo axis manips
         rule_if!(!model.node_input_facts(node.id)?[1].is_exotic());
@@ -1401,14 +1386,12 @@ impl TypedOp for Conv {
         };
         let pool_spec = self.pool_spec.change_geo_axes(&geo_adjusted)?;
         let new_op = Conv { pool_spec, ..self.clone() };
-        Ok(Some(AxisChangeConsequence {
-            substitute_op: Some(Box::new(new_op)),
-            wire_changes: tvec!(
-                (InOut::In(0), change.clone()),
-                (InOut::In(1), kernel_adjusted),
-                (InOut::Out(0), change.clone())
-            ),
-        }))
+        Ok(Some(
+            AxisChangeConsequence::substitute(new_op)
+                .wire_in(0, change)
+                .wire_in(1, &kernel_adjusted)
+                .wire_out(0, change),
+        ))
     }
 
     fn codegen(

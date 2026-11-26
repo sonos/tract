@@ -103,6 +103,7 @@ pub fn change_axes(
     changed_wires.insert(bound_outlets(change.outlet), change.op.clone());
     let mut changed_ops: HashMap<usize, Box<dyn TypedOp>> = HashMap::new();
     let mut rewired_scalar_input: HashMap<InletId, (OutletId, AxisOp)> = Default::default();
+    let mut replaced_const_input: HashMap<InletId, Arc<Tensor>> = Default::default();
     while let Some((change, emitter)) = todo_changes.pop() {
         rule_if!(explored.insert(change.clone()));
         let outlet_group = bound_outlets(change.outlet);
@@ -140,7 +141,17 @@ pub fn change_axes(
                     debug!("    Propagation of {change:?} blocked by {node}");
                     return Ok(None);
                 }
-                let AxisChangeConsequence { substitute_op, wire_changes } = more.unwrap();
+                let AxisChangeConsequence { substitute_op, wire_changes, input_values } =
+                    more.unwrap();
+                for (slot, value) in input_values {
+                    if !model.node(node.inputs[slot].node).op_is::<Const>() {
+                        debug!(
+                            "    Change {change:?} blocked: {node} replaces a non-constant input"
+                        );
+                        return Ok(None);
+                    }
+                    replaced_const_input.insert(InletId::new(node.id, slot), value);
+                }
                 trace!("    Change {:?} enters {} from {:?}", change.op, node, io);
                 trace!("       propagates as {wire_changes:?}");
                 if let Some(op) = substitute_op {
@@ -198,20 +209,24 @@ pub fn change_axes(
         if nodes_to_replace.contains(&node_id) {
             let mut inputs = tvec!();
             for (slot, orig) in node.inputs.iter().enumerate() {
-                let tgt = if let Some((outlet, alteration)) =
-                    rewired_scalar_input.get(&InletId::new(node_id, slot))
-                {
-                    let const_node = model.node(outlet.node);
-                    let mut value =
-                        const_node.op_as::<Const>().unwrap().val().clone().into_tensor();
-                    alteration.change_tensor(&mut value, false)?;
-                    let name = model.unique_name(&const_node.name);
-                    patch.add_const(name, value)?
-                } else {
-                    *replaced_wires
-                        .entry(*orig)
-                        .or_insert_with(|| patch.tap_model(model, *orig).unwrap())
-                };
+                let tgt =
+                    if let Some(value) = replaced_const_input.get(&InletId::new(node_id, slot)) {
+                        let name = model.unique_name(&model.node(orig.node).name);
+                        patch.add_const(name, value.clone())?
+                    } else if let Some((outlet, alteration)) =
+                        rewired_scalar_input.get(&InletId::new(node_id, slot))
+                    {
+                        let const_node = model.node(outlet.node);
+                        let mut value =
+                            const_node.op_as::<Const>().unwrap().val().clone().into_tensor();
+                        alteration.change_tensor(&mut value, false)?;
+                        let name = model.unique_name(&const_node.name);
+                        patch.add_const(name, value)?
+                    } else {
+                        *replaced_wires
+                            .entry(*orig)
+                            .or_insert_with(|| patch.tap_model(model, *orig).unwrap())
+                    };
                 inputs.push(tgt);
             }
             let op: Box<dyn TypedOp> =
@@ -290,6 +305,7 @@ pub fn sink_axis_op(
     rule_if!(succ.outputs.len() == 1);
     let change = axis_op.recip();
     rule_if_some!(consequence = succ.op.change_axes(model, succ, InOut::In(inlet.slot), &change)?);
+    rule_if!(consequence.input_values.is_empty());
     rule_if_some!(
         (input_changes, output_change) = split_wire_changes(succ, consequence.wire_changes)
     );
@@ -344,6 +360,7 @@ pub fn hoist_axis_op(
     rule_if!(prec.outputs.len() == 1);
     rule_if!(!prec.inputs.is_empty());
     rule_if_some!(consequence = prec.op.change_axes(model, prec, InOut::Out(0), &axis_op)?);
+    rule_if!(consequence.input_values.is_empty());
     rule_if_some!(
         (input_changes, output_change) = split_wire_changes(prec, consequence.wire_changes)
     );

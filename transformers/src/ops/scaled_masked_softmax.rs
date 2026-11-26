@@ -273,10 +273,7 @@ impl TypedOp for ScaledMaskedSoftmax {
         if mask_rank == rank {
             wire_changes.push((InOut::In(1), change.clone()));
         }
-        Ok(Some(AxisChangeConsequence {
-            wire_changes,
-            substitute_op: Some(Box::new(self.clone())),
-        }))
+        Ok(Some(AxisChangeConsequence::substitute(self.clone()).wires(wire_changes)))
     }
 
     fn axes_mapping(

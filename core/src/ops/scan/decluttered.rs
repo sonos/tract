@@ -787,14 +787,8 @@ impl Scan {
             };
         }
         body.check_consistency()?;
-        let op = Some(Box::new(Scan {
-            body,
-            input_mapping,
-            output_mapping,
-            decluttered: false,
-            ..self.clone()
-        }) as _);
-        Ok(Some(AxisChangeConsequence { substitute_op: op, wire_changes }))
+        let op = Scan { body, input_mapping, output_mapping, decluttered: false, ..self.clone() };
+        Ok(Some(AxisChangeConsequence::substitute(op).wires(wire_changes)))
     }
 }
 
