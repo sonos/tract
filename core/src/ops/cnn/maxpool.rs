@@ -40,6 +40,22 @@ impl TypedOp for MaxPool {
         Ok(facts)
     }
 
+    /// Channel moves and batch-axis changes go through `PoolSpec::change_axes`. A pool with
+    /// index outputs refuses: its indices are flat offsets in the input layout.
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        rule_if!(self.with_index_outputs.is_none());
+        let shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
+        rule_if_some!(pool_spec = self.pool_spec.change_axes(&shape, change)?);
+        let op = MaxPool { pool_spec, ..self.clone() };
+        Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,

@@ -50,6 +50,20 @@ impl TypedOp for SumPool {
         self.pool_spec.output_facts(inputs)
     }
 
+    /// Channel moves and batch-axis changes, through `PoolSpec::change_axes`.
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        let shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
+        rule_if_some!(pool_spec = self.pool_spec.change_axes(&shape, change)?);
+        let op = SumPool { pool_spec, ..self.clone() };
+        Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,
