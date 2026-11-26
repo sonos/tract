@@ -108,6 +108,32 @@ impl PoolSpec {
         })
     }
 
+    /// The spec a pool over `input_shape` takes when `change` applies to its input, the output
+    /// taking the same change: moving the channel axis to the other end swaps the data format
+    /// (`NCHW` <-> `NHWC`, `CHW` <-> `HWC`), adding or removing a leading batch axis adds or
+    /// removes the format's `N`. `None` for any other change.
+    pub fn change_axes(
+        &self,
+        input_shape: &[TDim],
+        change: &AxisOp,
+    ) -> TractResult<Option<PoolSpec>> {
+        let shape = self.data_format.shape(input_shape)?;
+        if shape.n_axis().is_none() && *change == AxisOp::Add(0) {
+            return Ok(Some(self.with_n_axis()));
+        }
+        if shape.n_axis().is_some() && *change == AxisOp::Rm(0) {
+            return Ok(Some(self.dispose_n_axis()));
+        }
+        let (c, last) = (shape.c_axis(), input_shape.len() - 1);
+        let (data_format, swap) = match self.data_format {
+            DataFormat::NCHW => (DataFormat::NHWC, AxisOp::Move(c, last)),
+            DataFormat::CHW => (DataFormat::HWC, AxisOp::Move(c, last)),
+            DataFormat::NHWC => (DataFormat::NCHW, AxisOp::Move(c, 1)),
+            DataFormat::HWC => (DataFormat::CHW, AxisOp::Move(c, 0)),
+        };
+        Ok((*change == swap).then(|| PoolSpec { data_format, ..self.clone() }))
+    }
+
     pub fn declutter(&self, input: &[TDim]) -> TractResult<Option<PoolSpec>> {
         if let PaddingSpec::ExplicitOnnxPool(before, after, _) = &self.padding {
             let input = self.data_format.shape(input)?;
@@ -170,5 +196,61 @@ impl super::ResolveTo<ConcretePoolGeometry> for SymbolicPoolGeometry {
             &*patch.output_shape,
         )?;
         Ok(ConcretePoolGeometry { input_shape, patch, output_shape })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops::cnn::{MaxPool, SumPool};
+
+    fn moved_pool_folds(op: impl TypedOp) -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([1, 9, 11, 4]))?;
+        let nchw = model.wire_node("to_nchw", AxisOp::Move(3, 1), &[x])?;
+        let pooled = model.wire_node("pool", op, &nchw)?;
+        let nhwc = model.wire_node("to_nhwc", AxisOp::Move(1, 3), &pooled)?;
+        model.select_output_outlets(&nhwc)?;
+        let input = Tensor::from_shape(
+            &[1, 9, 11, 4],
+            &(0..396).map(|i| ((i * 37) % 101) as f32 - 50.0).collect::<Vec<_>>(),
+        )?;
+        let reference = model.clone().into_runnable()?.run(tvec!(input.clone().into_tvalue()))?;
+        let decluttered = model.into_decluttered()?;
+        ensure!(!decluttered.nodes().iter().any(|n| n.op_is::<AxisOp>()), "{decluttered}");
+        let formats: Vec<DataFormat> = decluttered
+            .nodes()
+            .iter()
+            .filter_map(|n| {
+                n.op_as::<MaxPool>()
+                    .map(|p| p.pool_spec.data_format)
+                    .or_else(|| n.op_as::<SumPool>().map(|p| p.pool_spec.data_format))
+            })
+            .collect();
+        ensure!(formats == [DataFormat::NHWC], "{decluttered}");
+        let found = decluttered.into_runnable()?.run(tvec!(input.into_tvalue()))?;
+        found[0].close_enough(&reference[0], Approximation::Close)
+    }
+
+    fn spec() -> PoolSpec {
+        PoolSpec::new(
+            DataFormat::NCHW,
+            tvec![3, 2],
+            PaddingSpec::SameUpper,
+            None,
+            Some(tvec![2, 1]),
+            4,
+            4,
+        )
+    }
+
+    #[test]
+    fn channel_move_folds_into_maxpool() -> TractResult<()> {
+        moved_pool_folds(MaxPool::new(spec(), None))
+    }
+
+    #[test]
+    fn channel_move_folds_into_sumpool() -> TractResult<()> {
+        moved_pool_folds(SumPool::new(spec(), false, true))
     }
 }
