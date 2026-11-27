@@ -32,6 +32,7 @@ tires.
 |---------|---------------|
 | [`pytorch-albert-v2`](pytorch-albert-v2) | ALBERT masked-LM token completion; demonstrates `tract`'s tokenizer integration and tuple-argument `run(...)`. |
 | [`causal_llm`](causal_llm) | Reusable crate + CLI + OpenAI-compatible HTTP server for NNEF-packaged causal LLMs (Llama-style). Exercises KV-cache unfolding, prompt chunking, repeat-penalty sampling, state freeze/truncate. |
+| [`nemotron-omni`](nemotron-omni) | Nemotron 3 Nano Omni (31B mixture-of-experts, Mamba-2 hybrid) answering about images and audio: vision, audio and mel graphs feeding embeddings to a decoder with explicit recurrent states. |
 
 ## Speech recognition
 

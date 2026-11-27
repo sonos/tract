@@ -47,6 +47,7 @@ members = [
     "examples/kyutai-moshi",
     "examples/voxtral-realtime",
     "examples/nemotron-voicechat",
+    "examples/nemotron-omni",
     "examples/qwen3-asr",
     "examples/nnef-dump-mobilenet-v2",
     "examples/nnef-mobilenet-v2",
