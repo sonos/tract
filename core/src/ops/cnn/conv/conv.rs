@@ -58,6 +58,23 @@ pub struct Conv {
 }
 
 impl Conv {
+    /// The axis move that would put the channel axis of this convolution last, when it is a channel-first depthwise
+    /// convolution the host has a channel-last kernel for. Declutter applies it unless
+    /// `TRACT_DISABLE_DEPTHWISE_CHANNEL_LAST` or `TRACT_LAYOUT_PLANNER` is set; the layout planner uses it as a seed.
+    pub fn channel_last_request(&self) -> Option<(InOut, AxisOp)> {
+        tract_linalg::routines::depthwise_c_f32()?;
+        let fmt = self.pool_spec.data_format;
+        let depthwise = self.group > 1
+            && self.group == self.input_channels()
+            && self.group == self.output_channels();
+        if !depthwise || self.q_params.is_some() || self.input_channels() < 16 || fmt.c_is_last() {
+            return None;
+        }
+        let rank = self.pool_spec.rank() + 1 + fmt.has_n() as usize;
+        let c_axis = if fmt.has_n() { 1 } else { 0 };
+        Some((InOut::In(0), AxisOp::Move(c_axis, rank - 1)))
+    }
+
     pub fn input_channels(&self) -> usize {
         self.pool_spec.input_channels
     }
@@ -1303,22 +1320,12 @@ impl TypedOp for Conv {
     /// without a `depthwise_c_f32` kernel get no suggestion: their channel-last
     /// path is scalar. `TRACT_DISABLE_DEPTHWISE_CHANNEL_LAST` turns the suggestion off.
     fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
-        if tract_linalg::routines::depthwise_c_f32().is_none() {
+        if TRACT_DISABLE_DEPTHWISE_CHANNEL_LAST.get()
+            || crate::optim::layout_plan::TRACT_LAYOUT_PLANNER.get()
+        {
             return Ok(tvec!());
         }
-        let fmt = self.pool_spec.data_format;
-        let depthwise = self.group > 1
-            && self.group == self.input_channels()
-            && self.group == self.output_channels();
-        if !depthwise || self.q_params.is_some() || self.input_channels() < 16 || fmt.c_is_last() {
-            return Ok(tvec!());
-        }
-        if TRACT_DISABLE_DEPTHWISE_CHANNEL_LAST.get() {
-            return Ok(tvec!());
-        }
-        let rank = self.pool_spec.rank() + 1 + fmt.has_n() as usize;
-        let c_axis = if fmt.has_n() { 1 } else { 0 };
-        Ok(tvec!((InOut::In(0), AxisOp::Move(c_axis, rank - 1))))
+        Ok(self.channel_last_request().into_iter().collect())
     }
 
     fn change_axes(
