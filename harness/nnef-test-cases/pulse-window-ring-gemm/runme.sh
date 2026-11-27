@@ -20,6 +20,7 @@ for rt in $TRACT_RUNTIMES
 do
     case "$rt" in
         --metal) asserts="--assert-op-count MetalRingGemm 2";;
+        --runtime=wgpu) asserts="--assert-op-count WgpuRingGemm 2";;
         *) continue;;
     esac
     $TRACT_RUN --nnef-tract-core --nnef-tract-transformers . --pulse "T=2" $rt dump -q $asserts

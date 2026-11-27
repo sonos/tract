@@ -29,6 +29,7 @@ pub mod nan_replace;
 pub mod pool;
 pub mod reduce;
 pub mod resize;
+pub mod ring_matvec;
 pub mod rms_norm;
 pub mod routing;
 pub mod scaled_masked_softmax;
