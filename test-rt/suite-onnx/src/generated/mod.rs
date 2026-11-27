@@ -4,11 +4,13 @@ use tract_onnx::pb::*;
 
 mod celu;
 mod convolution;
+mod global_lp_pool;
 mod selu;
 
 pub fn suite() -> TestSuite {
     TestSuite::default()
         .with("convolution", convolution::suite())
+        .with("global_lp_pool", global_lp_pool::suite())
         .with("celu", celu::suite())
         .with("selu", selu::suite())
 }
