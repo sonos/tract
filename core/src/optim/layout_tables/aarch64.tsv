@@ -1,0 +1,103 @@
+# Raspberry Pi 5 (Cortex-A76), f32_to_f16, 4 threads; tract layout-calibrate
+model	lp_large.onnx
+model	lp_xs.onnx
+model	mobilenet_v2_1.0.onnx.nnef.tgz
+model	modnet_webcam.onnx
+model	pp_humanseg_v2.onnx
+model	rvm_mobilenetv3_fp16.onnx
+model	tiny_det.onnx
+model	tiny_rec.onnx
+model	yolo26n-raw.onnx
+model	yolov8n-face.onnx
+entry	Concat	76	1.928978e-02	1.970858e-02	elements	5.224612e+07
+entry	DeconvSum	2	5.133183e-03	5.186121e-03	elements	2.048000e+06
+entry	GeluExact	23	2.975573e-02	2.901337e-02	fma	9.769984e+07
+entry	GroupNorm	16	1.945878e-02	2.013537e-02	fma	2.738995e+07
+entry	HardSwish	35	2.448351e-02	2.478503e-02	elements	3.637376e+06
+entry	IntoShape	593	2.491252e-03	2.371712e-03	elements	1.291214e+08
+entry	LazyIm2col for matmul gemv	7	1.759900e-05	1.713400e-05	elements	5.427200e+06
+entry	LazyIm2col for matmul im2col cout<=128	13	2.078600e-05	2.039800e-05	elements	3.275902e+06
+entry	LazyIm2col for matmul im2col cout<=16	36	6.847300e-05	6.557000e-05	elements	2.488541e+07
+entry	LazyIm2col for matmul im2col cout<=256	2	2.817000e-06	2.622000e-06	elements	4.515840e+05
+entry	LazyIm2col for matmul im2col cout<=32	41	7.645600e-05	7.354400e-05	elements	1.723782e+07
+entry	LazyIm2col for matmul im2col cout<=64	39	6.558900e-05	6.533300e-05	elements	1.154395e+07
+entry	MoveAxis	2	4.907310e-04	5.085180e-04	elements	5.376000e+05
+entry	NearestUpsample	8	2.084554e-03	3.706155e-03	elements	4.608000e+06
+entry	OptAddByScalar	10	2.605790e-04	3.166440e-04	elements	7.552000e+05
+entry	OptAddUnicast	55	3.692731e-03	3.758540e-03	elements	7.337120e+06
+entry	OptBinChain(Add+Add)	4	2.637000e-03	2.505405e-03	elements	2.168832e+06
+entry	OptBinChain(Add+Max)	2	8.154830e-04	8.332380e-04	elements	1.638528e+06
+entry	OptBinChain(Add+Mul)	2	1.629200e-05	1.649200e-05	fma	3.360000e+04
+entry	OptBinChain(Add+Mul+Add+Min+Max)	24	1.290380e-04	4.796880e-04	fma	6.400000e+03
+entry	OptBinChain(Max+Min)	57	3.050232e-03	2.865854e-03	elements	1.085939e+07
+entry	OptBinChain(Mul+Add)	32	3.226128e-03	4.338735e-03	fma	7.101568e+06
+entry	OptBinChain(Mul+Add+Add+Max+Min)	1	8.086670e-04	7.444590e-04	fma	6.912000e+05
+entry	OptBinChain(Mul+Add+Max)	6	1.462510e-04	2.050970e-04	fma	6.405120e+05
+entry	OptBinChain(Mul+Add+Max+Min)	1	2.591510e-04	2.598990e-04	fma	2.304000e+05
+entry	OptBinChain(Mul+Add+Mul)	1	4.454800e-05	4.746600e-05	fma	1.680000e+05
+entry	OptBinChain(Sub+Mul)	1	8.565070e-04	8.417650e-04	fma	1.728000e+05
+entry	OptBinChain(Sub+Mul+Mul+Add+Max)	17	2.338869e-03	2.401294e-03	fma	6.184192e+06
+entry	OptBinChain(SubF+Mul+Add)	4	2.254760e-04	2.246450e-04	fma	3.545600e+05
+entry	OptMatMulPack for matmul 1x1 cout<=128	95	2.366803e-03	3.497708e-03	elements	1.085990e+07
+entry	OptMatMulPack for matmul 1x1 cout<=16	25	7.139680e-04	2.272763e-03	elements	1.177338e+07
+entry	OptMatMulPack for matmul 1x1 cout<=256	92	1.765419e-03	1.865281e-03	elements	4.952384e+06
+entry	OptMatMulPack for matmul 1x1 cout<=32	38	9.927280e-04	4.083718e-03	elements	1.618675e+07
+entry	OptMatMulPack for matmul 1x1 cout<=512	17	2.896660e-04	2.889020e-04	elements	7.444480e+05
+entry	OptMatMulPack for matmul 1x1 cout<=64	99	2.947310e-03	5.108986e-03	elements	1.747146e+07
+entry	OptMatMulPack for matmul gemv	77	7.437270e-04	7.735930e-04	elements	5.665862e+06
+entry	OptMaxByScalar	42	8.300117e-03	8.147628e-03	elements	2.419910e+07
+entry	OptMaxPool	7	7.238292e-03	7.350618e-03	elements	1.945600e+06
+entry	OptMulByScalar	34	3.566667e-03	6.271772e-03	fma	6.043200e+06
+entry	OptMulUnicast	15	1.143207e-03	1.101537e-03	fma	1.815680e+06
+entry	OptSubUnicast	6	3.541610e-04	3.454480e-04	elements	7.416000e+05
+entry	OptSumPool	6	1.539832e-03	1.538013e-03	elements	6.540000e+04
+entry	Pad	61	3.195849e-03	3.362887e-03	elements	5.763966e+06
+entry	Reduce<Mean>	35	1.399435e-02	1.404257e-02	fma	7.134528e+06
+entry	Resize	38	3.213021e-01	3.177051e-01	elements	1.816141e+07
+entry	Sigmoid	20	8.622770e-04	8.803500e-04	fma	2.954934e+07
+entry	Silu	167	9.434292e-03	9.428310e-03	fma	3.614976e+08
+entry	Slice	65	5.714685e-03	5.662990e-03	elements	1.780664e+07
+entry	Softmax	5	9.674757e-02	9.673390e-02	elements	1.527568e+06
+entry	Source	14	2.495000e-06	2.435000e-06	elements	6.526208e+06
+entry	Square	2	7.097360e-04	6.603730e-04	elements	4.608000e+05
+entry	Tanh	6	2.128760e-04	2.096750e-04	fma	7.729920e+06
+entry	depthwise c<=256 w<=20 s1 taps25	1	7.565310e-04	9.643600e-05	fma	9.600000e+05
+entry	depthwise c<=256 w<=20 s1 taps9	17	3.104042e-03	1.108278e-03	fma	6.407424e+06
+entry	depthwise c<=256 w<=20 s2 taps25	1	4.192600e-04	7.006800e-05	fma	5.760000e+05
+entry	depthwise c<=256 w<=20 s2 taps9	2	4.528180e-04	9.730700e-05	fma	6.566400e+05
+entry	depthwise c<=256 w<=40 s1 taps25	6	1.846501e-03	6.735310e-04	fma	1.447200e+07
+entry	depthwise c<=256 w<=40 s1 taps5	1	3.604700e-05	8.460000e-06	fma	3.200000e+04
+entry	depthwise c<=256 w<=40 s1 taps9	7	1.018284e-03	6.579400e-04	fma	8.552448e+06
+entry	depthwise c<=256 w<=40 s2 taps25	2	7.887240e-04	3.290280e-04	fma	3.340800e+06
+entry	depthwise c<=256 w<=40 s2 taps9	3	5.899740e-04	4.183560e-04	fma	2.564352e+06
+entry	depthwise c<=256 w<=8 s2 taps9	1	2.159050e-04	1.783500e-05	fma	8.640000e+04
+entry	depthwise c<=256 w<=80 s1 taps9	14	3.525986e-03	3.854098e-03	fma	3.957926e+07
+entry	depthwise c<=256 w<=80 s2 taps9	5	2.984997e-03	3.544908e-03	fma	1.607731e+07
+entry	depthwise c<=512 w<=20 s1 taps25	6	6.125479e-03	9.117480e-04	fma	2.284800e+07
+entry	depthwise c<=512 w<=20 s1 taps9	11	2.394613e-03	7.180700e-04	fma	1.112832e+07
+entry	depthwise c<=512 w<=20 s2 taps9	2	3.442200e-04	1.525970e-04	fma	1.423872e+06
+entry	depthwise c<=512 w<=40 s1 taps9	9	2.423325e-03	1.270037e-03	fma	2.206310e+07
+entry	depthwise c<=512 w<=8 s1 taps25	6	1.481161e-02	6.281230e-04	fma	5.280000e+06
+entry	depthwise c<=512 w<=8 s1 taps9	6	5.080803e-03	2.393010e-04	fma	2.030400e+06
+entry	depthwise c<=512 w<=8 s2 taps25	1	1.681654e-03	9.711800e-05	fma	6.720000e+05
+entry	depthwise c<=512 w<=8 s2 taps9	1	6.203130e-04	4.168500e-05	fma	2.540160e+05
+entry	depthwise c<=64 w<=20 s1 taps25	1	3.739210e-04	8.305600e-05	fma	6.400000e+05
+entry	depthwise c<=64 w<=20 s2 taps9	1	1.496380e-04	3.152000e-05	fma	2.304000e+05
+entry	depthwise c<=64 w<=40 s1 taps25	1	2.842700e-04	1.891180e-04	fma	2.560000e+06
+entry	depthwise c<=64 w<=40 s1 taps9	6	5.060540e-04	3.531140e-04	fma	4.225536e+06
+entry	depthwise c<=64 w<=40 s2 taps9	1	1.589830e-04	2.051510e-04	fma	6.912000e+05
+entry	depthwise c<=64 w<=80 s1 taps25	2	2.408533e-03	2.583691e-03	fma	5.120000e+07
+entry	depthwise c<=64 w<=80 s1 taps9	20	4.633172e-03	5.529199e-03	fma	5.689037e+07
+entry	depthwise c<=64 w<=80 s2 taps9	4	8.359520e-04	1.004662e-03	fma	5.451264e+06
+entry	matmul 1x1 cout<=128	105	1.889087e-02	1.788504e-02	fma	1.253457e+09
+entry	matmul 1x1 cout<=16	32	9.117774e-03	8.318364e-03	fma	2.132140e+08
+entry	matmul 1x1 cout<=256	93	1.485791e-02	1.464180e-02	fma	1.290733e+09
+entry	matmul 1x1 cout<=32	47	1.240110e-02	1.188638e-02	fma	6.094879e+08
+entry	matmul 1x1 cout<=512	15	3.080121e-03	3.130167e-03	fma	2.906849e+08
+entry	matmul 1x1 cout<=64	109	2.259158e-02	2.200616e-02	fma	1.393791e+09
+entry	matmul gemv	66	1.936177e-02	1.979019e-02	fma	9.061266e+07
+entry	matmul im2col cout<=128	13	6.815184e-02	6.747217e-02	fma	2.708404e+09
+entry	matmul im2col cout<=16	39	4.639672e-02	4.757099e-02	fma	2.405973e+09
+entry	matmul im2col cout<=256	2	2.596488e-03	2.684581e-03	fma	2.359296e+08
+entry	matmul im2col cout<=32	41	4.644755e-02	4.647466e-02	fma	4.017075e+09
+entry	matmul im2col cout<=64	42	4.994776e-02	5.023304e-02	fma	5.335279e+09

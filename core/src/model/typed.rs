@@ -290,8 +290,15 @@ impl TypedModel {
         crate::optim::Optimizer::prop_consts().optimize(self)
     }
 
-    /// Translate the graph to locally optimized operators (LIR or MIR ops).
+    /// Translate the graph to locally optimized operators (LIR or MIR ops). With
+    /// [`crate::optim::layout_plan::TRACT_LAYOUT_PLANNER`] set, the layout planner first chooses which regions run
+    /// channel-last.
     pub fn optimize(&mut self) -> TractResult<()> {
+        if crate::optim::layout_plan::TRACT_LAYOUT_PLANNER.get()
+            && let Some(table) = crate::optim::layout_plan::LayoutTable::current()?
+        {
+            crate::optim::layout_plan::plan(self, &table)?;
+        }
         self.optimize_with_session(&mut crate::optim::Optimizer::codegen().session())
     }
 

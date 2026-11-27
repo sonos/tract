@@ -5,6 +5,7 @@ use tract_itertools::Itertools;
 
 pub mod change_axes;
 mod concat_then_einsum;
+pub mod layout_plan;
 mod op_optim;
 mod prop_const;
 pub mod propagate_roi;
