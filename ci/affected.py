@@ -55,6 +55,7 @@ IGNORED = [
     "ci/test-llm.sh",
     "ci/test-rt.sh",
     "ci/web-e2e/**",
+    "examples/web-demos/**",
     "ci/tflite/**",
     "ci/tflite.sh",
     "ci/onnx-tests.sh",
