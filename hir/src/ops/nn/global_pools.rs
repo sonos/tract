@@ -84,6 +84,7 @@ impl Expansion for GlobalLpPool {
                 &wire,
             )?;
         } else {
+            wire = target.wire_node(format!("{name}.abs"), tract_core::ops::math::abs(), &wire)?;
             let pow = tensor0(self.0 as f64)
                 .cast_to_dt(input_fact.datum_type)?
                 .into_owned()
@@ -100,16 +101,6 @@ impl Expansion for GlobalLpPool {
             name.to_string() + ".sum",
             tract_core::ops::nn::Reduce::new(axes, tract_core::ops::nn::Reducer::Sum),
             &wire,
-        )?;
-        let div = tensor0(input_fact.shape.iter().skip(2).product::<TDim>().to_i64()? as f64)
-            .cast_to_dt(input_fact.datum_type)?
-            .into_owned()
-            .broadcast_into_rank(input_fact.rank())?;
-        let div = target.add_const(name.to_string() + ".div", div)?;
-        wire = target.wire_node(
-            name.to_string() + ".norm",
-            tract_core::ops::math::div(),
-            &[wire[0], div],
         )?;
         if self.0 == 2 {
             wire = target.wire_node(
