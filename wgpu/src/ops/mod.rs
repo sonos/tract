@@ -6,5 +6,6 @@ pub mod fused_axis_op;
 pub mod gemv_pair;
 pub mod matmul;
 pub mod resize2d;
+pub mod ring_gemm;
 pub mod sdpa;
 pub mod sum_run;
