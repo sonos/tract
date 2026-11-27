@@ -2,9 +2,10 @@
 //!
 //! Declutter leaves convolutions channel-first. With [`TRACT_LAYOUT_PLANNER`] on, [`TypedModel::optimize`] first calls
 //! [`plan`] on the decluttered model: each depthwise convolution with a channel-last kernel seeds a region (the axis
-//! change propagated as far as `change_axes` goes, so seeds in one block share a region), each region is flipped on a
-//! copy and optimized, and a [`LayoutTable`] estimates the time change from the two optimized plans. The regions that
-//! gain are flipped together when their summed gain exceeds [`MARGIN`] of the model's estimated time.
+//! change propagated as far as `change_axes` goes, so seeds in one block share a region). A [`LayoutTable`] estimates
+//! the time change between the optimized plans with no region and with every region flipped, and the change of each
+//! node is credited to the region it comes from. The regions that gain are flipped together when their summed gain
+//! exceeds [`MARGIN`] of the model's estimated time.
 //!
 //! A table holds, per op key of an optimized node, channel-first and channel-last times and channel-first work as
 //! measured in models by `tract layout-calibrate`. A node's time is estimated as its work times its key's rate, and a
@@ -306,6 +307,8 @@ pub struct Estimate {
     pub region_nodes: usize,
     /// Nodes with work the table has no entry for, left out of `total` and `delta`.
     pub unknown: usize,
+    /// Time change per node of the channel-first plan, by node id, for the nodes the flip changes.
+    pub node_deltas: HashMap<usize, f64>,
 }
 
 /// Estimated time change from the optimized channel-first plan `cf` to the optimized channel-last plan `cl`.
@@ -321,8 +324,10 @@ pub fn estimate(table: &LayoutTable, cf: &TypedModel, cl: &TypedModel) -> TractR
         };
         est.total += work * rate;
         if region.contains(&node.id) {
-            est.delta += work * rate * (ratio - 1.0);
-            *by_key.entry(key).or_default() += work * rate * (ratio - 1.0);
+            let delta = work * rate * (ratio - 1.0);
+            est.delta += delta;
+            est.node_deltas.insert(node.id, delta);
+            *by_key.entry(key).or_default() += delta;
         }
     }
     est.by_key = by_key.into_iter().collect();
@@ -336,9 +341,9 @@ fn codegen(model: &TypedModel) -> TractResult<TypedModel> {
     Ok(model)
 }
 
-/// Copy of the decluttered `model` with the channel-last request of convolution `conv` propagated, decluttered, or
-/// `None` when the change can not propagate.
-fn flip(model: &TypedModel, conv: &str) -> TractResult<Option<TypedModel>> {
+/// The patch propagating the channel-last request of convolution `conv` through the decluttered `model`, if it
+/// propagates.
+fn seed_patch(model: &TypedModel, conv: &str) -> TractResult<Option<TypedModelPatch>> {
     let node = model.node_by_name(conv)?;
     let Some((io, op)) = node.op_as::<Conv>().and_then(|c| c.channel_last_request()) else {
         return Ok(None);
@@ -346,14 +351,20 @@ fn flip(model: &TypedModel, conv: &str) -> TractResult<Option<TypedModel>> {
     let mut interfaces = model.output_outlets()?.to_vec();
     interfaces.extend(model.input_outlets()?.iter());
     let change = AxisChange { outlet: io.as_outlet(node), op };
-    let Some((patch, _)) = change_axes(model, &change, &interfaces, &[], &mut HashSet::default())?
-    else {
-        return Ok(None);
-    };
+    Ok(change_axes(model, &change, &interfaces, &[], &mut HashSet::default())?
+        .map(|(patch, _)| patch))
+}
+
+/// Copy of the decluttered `model` with the channel-last requests of `convs` propagated, decluttered.
+fn flip(model: &TypedModel, convs: &[String]) -> TractResult<TypedModel> {
     let mut flipped = model.clone();
-    patch.apply(&mut flipped)?;
+    for conv in convs {
+        if let Some(patch) = seed_patch(&flipped, conv)? {
+            patch.apply(&mut flipped)?;
+        }
+    }
     flipped.declutter()?;
-    Ok(Some(flipped))
+    Ok(flipped)
 }
 
 fn is_channel_last(model: &TypedModel, conv: &str) -> bool {
@@ -364,16 +375,98 @@ fn is_channel_last(model: &TypedModel, conv: &str) -> bool {
         .is_some_and(|c| c.pool_spec.data_format.c_is_last())
 }
 
-/// One region the planner considered: the convolutions it covers and its estimate.
+/// One region the planner considered: the convolutions it covers, its estimated time change, and the decision.
 #[derive(Clone, Debug)]
 pub struct RegionPlan {
     pub convs: Vec<String>,
-    pub estimate: Estimate,
+    pub delta: f64,
     pub flipped: bool,
+}
+
+struct Region {
+    convs: Vec<String>,
+    /// Names of the decluttered nodes the flip changes, and of their consumers.
+    nodes: HashSet<String>,
+}
+
+/// The regions of the decluttered `model`: the seeds one channel-last request covers, and the nodes it changes.
+fn regions(model: &TypedModel, seeds: &[String]) -> TractResult<Vec<Region>> {
+    let before = signatures(model);
+    let mut regions: Vec<Region> = vec![];
+    for seed in seeds {
+        if regions.iter().any(|r| r.convs.contains(seed)) {
+            continue;
+        }
+        let Some(patch) = seed_patch(model, seed)? else { continue };
+        let mut patched = model.clone();
+        patch.apply(&mut patched)?;
+        let convs: Vec<String> =
+            seeds.iter().filter(|s| is_channel_last(&patched, s)).cloned().collect();
+        if !convs.contains(seed) {
+            continue;
+        }
+        let after = signatures(&patched);
+        let changed: Vec<&TypedNode> =
+            model.nodes().iter().filter(|n| after.get(&n.name) != before.get(&n.name)).collect();
+        let mut nodes: HashSet<String> = changed.iter().map(|n| n.name.clone()).collect();
+        for node in &changed {
+            for succ in node.outputs.iter().flat_map(|o| &o.successors) {
+                nodes.insert(model.node(succ.node).name.clone());
+            }
+        }
+        regions.push(Region { convs, nodes });
+    }
+    Ok(regions)
+}
+
+/// Index in `regions` of the region a node of the optimized plan `cf` comes from: the region holding the longest
+/// dot-separated prefix of its name that names a decluttered node, else the region of a neighbour.
+fn attribute(
+    cf: &TypedModel,
+    regions: &[Region],
+    ids: impl Iterator<Item = usize>,
+) -> HashMap<usize, usize> {
+    let region_of = |name: &str| -> Option<usize> {
+        let mut prefix = name;
+        loop {
+            if let Some(ix) = regions.iter().position(|r| r.nodes.contains(prefix)) {
+                return Some(ix);
+            }
+            prefix = &prefix[..prefix.rfind('.')?];
+        }
+    };
+    let ids: Vec<usize> = ids.collect();
+    let mut found: HashMap<usize, usize> =
+        ids.iter().filter_map(|&id| region_of(&cf.node(id).name).map(|r| (id, r))).collect();
+    for _ in 0..ids.len() {
+        let before = found.len();
+        for &id in &ids {
+            if found.contains_key(&id) {
+                continue;
+            }
+            let node = cf.node(id);
+            let neighbour = node
+                .inputs
+                .iter()
+                .map(|i| i.node)
+                .chain(node.outputs.iter().flat_map(|o| o.successors.iter().map(|s| s.node)))
+                .find_map(|n| found.get(&n).copied());
+            if let Some(r) = neighbour {
+                found.insert(id, r);
+            }
+        }
+        if found.len() == before {
+            break;
+        }
+    }
+    found
 }
 
 /// Flip the regions of the decluttered, channel-first `model` that `table` predicts faster channel-last, and return the
 /// regions considered. No-op when the host has no channel-last depthwise kernel or no convolution asks for it.
+///
+/// The estimate compares the channel-first plan with the plan where every region is flipped, and splits the change
+/// between regions by where the changed nodes come from, so the model is optimized twice whatever its region count.
 pub fn plan(model: &mut TypedModel, table: &LayoutTable) -> TractResult<Vec<RegionPlan>> {
     KnobScope::new([("TRACT_LAYOUT_PLANNER", "true")])?.enter(|| plan_in_scope(model, table))
 }
@@ -385,44 +478,53 @@ fn plan_in_scope(model: &mut TypedModel, table: &LayoutTable) -> TractResult<Vec
         .filter(|n| n.op_as::<Conv>().is_some_and(|c| c.channel_last_request().is_some()))
         .map(|n| n.name.clone())
         .collect();
-    if seeds.is_empty() {
+    let regions = regions(model, &seeds)?;
+    if regions.is_empty() {
         return Ok(vec![]);
     }
+    let all_convs: Vec<String> = regions.iter().map(|r| r.convs[0].clone()).collect();
+    let all_flipped = flip(model, &all_convs)?;
     let baseline = codegen(model)?;
-    let mut regions: Vec<RegionPlan> = vec![];
-    for seed in &seeds {
-        if regions.iter().any(|r| r.convs.contains(seed)) {
-            continue;
+    let est = estimate(table, &baseline, &codegen(&all_flipped)?)?;
+    let owner = attribute(&baseline, &regions, est.node_deltas.keys().copied());
+    let mut plans: Vec<RegionPlan> = regions
+        .iter()
+        .map(|r| RegionPlan { convs: r.convs.clone(), delta: 0.0, flipped: false })
+        .collect();
+    for (id, delta) in &est.node_deltas {
+        if let Some(&r) = owner.get(id) {
+            plans[r].delta += delta;
         }
-        let Some(flipped) = flip(model, seed)? else { continue };
+    }
+    let gain: f64 = plans.iter().filter(|p| p.delta < 0.0).map(|p| -p.delta).sum();
+    if gain > MARGIN * est.total {
+        plans.iter_mut().for_each(|p| p.flipped = p.delta < 0.0);
+    }
+    if plans.iter().all(|p| p.flipped) {
+        *model = all_flipped;
+    } else if plans.iter().any(|p| p.flipped) {
         let convs: Vec<String> =
-            seeds.iter().filter(|s| is_channel_last(&flipped, s)).cloned().collect();
-        if !convs.contains(seed) {
-            continue;
-        }
-        let estimate = estimate(table, &baseline, &codegen(&flipped)?)?;
-        regions.push(RegionPlan { convs, flipped: estimate.delta < 0.0, estimate });
+            plans.iter().filter(|p| p.flipped).map(|p| p.convs[0].clone()).collect();
+        *model = flip(model, &convs)?;
     }
-    let total = regions.first().map(|r| r.estimate.total).unwrap_or_default();
-    let gain: f64 = regions.iter().filter(|r| r.flipped).map(|r| -r.estimate.delta).sum();
-    if gain <= MARGIN * total {
-        regions.iter_mut().for_each(|r| r.flipped = false);
-    }
-    for region in regions.iter().filter(|r| r.flipped) {
-        if let Some(flipped) = flip(model, &region.convs[0])? {
-            *model = flipped;
-        }
-    }
-    for r in &regions {
+    let unattributed: f64 =
+        est.node_deltas.iter().filter(|(id, _)| !owner.contains_key(id)).map(|(_, d)| d).sum();
+    for p in &plans {
         info!(
             "Layout region {:?}: estimated {:+.2}% of {:.3} ms, {}",
-            r.convs,
-            100.0 * r.estimate.delta / total.max(f64::MIN_POSITIVE),
-            total * 1e3,
-            if r.flipped { "channel-last" } else { "channel-first" }
+            p.convs,
+            100.0 * p.delta / est.total.max(f64::MIN_POSITIVE),
+            est.total * 1e3,
+            if p.flipped { "channel-last" } else { "channel-first" }
         );
     }
-    Ok(regions)
+    if unattributed != 0.0 {
+        info!(
+            "Layout planner: {:+.2}% estimated on nodes no region claims",
+            100.0 * unattributed / est.total.max(f64::MIN_POSITIVE)
+        );
+    }
+    Ok(plans)
 }
 
 #[cfg(test)]
