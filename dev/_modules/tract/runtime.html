@@ -230,8 +230,9 @@
         </div>
         <article role="main" id="furo-main-content">
           <h1>Source code for tract.runtime</h1><div class="highlight"><pre>
-<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ctypes</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Union</span> <span class="c1"># after ctypes so that Union is overriden</span>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ctypes</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span> <span class="c1"># after ctypes so that Union is overriden</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.runnable</span><span class="w"> </span><span class="kn">import</span> <span class="n">Runnable</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.model</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span>
@@ -250,6 +251,36 @@
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runtime_for_name</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">runtime</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">runtime</span><span class="p">)</span></div>
 
+
+<span class="k">class</span><span class="w"> </span><span class="nc">RunOptions</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Options for :meth:`Runtime.prepare`.</span>
+
+<span class="sd">    Mirrors ``RunOptions`` in the Rust API and serializes to the same JSON.</span>
+
+<span class="sd">    .. code-block:: python</span>
+
+<span class="sd">        # size GPU memory for sequences of 512, without fixing the input shape</span>
+<span class="sd">        options = tract.RunOptions().memory_sizing_hint("S", 512)</span>
+<span class="sd">        runnable = tract.runtime_for_name("metal").prepare(model, options)</span>
+<span class="sd">    """</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">memory_sizing_hints</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_memory_sizing_hints</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">memory_sizing_hints</span><span class="p">)</span> <span class="k">if</span> <span class="n">memory_sizing_hints</span> <span class="k">else</span> <span class="p">{}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">memory_sizing_hint</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"RunOptions"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Size memory for symbol ``name`` taking ``value``. Returns self for chaining.</span>
+
+<span class="sd">        Hints only steer memory planning: inputs above or below them still run. ``name`` must be a</span>
+<span class="sd">        symbol of the prepared model and ``value`` nonnegative.</span>
+<span class="sd">        """</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_memory_sizing_hints</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_json</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Serialize to the JSON the runtime expects."""</span>
+        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">"memory_sizing_hints"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_memory_sizing_hints</span><span class="p">})</span>
 
 <div class="viewcode-block" id="Runtime">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runtime.Runtime">[docs]</a>
@@ -286,14 +317,22 @@
 
 <div class="viewcode-block" id="Runtime.prepare">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runtime.Runtime.prepare">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">prepare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span><span class="n">Model</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Runnable</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span><span class="n">Model</span><span class="p">,</span> <span class="n">options</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">RunOptions</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Runnable</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Prepare a model for execution on the Runtime.</span>
+
+<span class="sd">        ``options`` is a :class:`RunOptions` or the JSON for one.</span>
 
 <span class="sd">        NB: The passed model is invalidated by this call.</span>
 <span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">runnable</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runtime_prepare</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">ptr</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">runnable</span><span class="p">)))</span>
+        <span class="k">if</span> <span class="n">options</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runtime_prepare</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">ptr</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">runnable</span><span class="p">)))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">RunOptions</span><span class="p">):</span>
+                <span class="n">options</span> <span class="o">=</span> <span class="n">options</span><span class="o">.</span><span class="n">to_json</span><span class="p">()</span>
+            <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runtime_prepare_with_options</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">ptr</span><span class="p">),</span> <span class="n">options</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">runnable</span><span class="p">)))</span>
         <span class="n">model</span><span class="o">.</span><span class="n">ptr</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="k">return</span> <span class="n">Runnable</span><span class="p">(</span><span class="n">runnable</span><span class="p">)</span></div>
 </div>

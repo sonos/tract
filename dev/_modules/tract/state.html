@@ -246,7 +246,7 @@
 <span class="sd">    Stateful models maintain internal buffers between calls to :meth:`run`</span>
 <span class="sd">    (e.g. recurrent networks, pulsed convolutions). A ``State`` is created by</span>
 <span class="sd">    ``Runnable.spawn_state()`` and can be called repeatedly with successive</span>
-<span class="sd">    input chunks. Use :meth:`freeze` to snapshot the state for later reuse.</span>
+<span class="sd">    input chunks. Use :meth:`clone` to fork a stream.</span>
 <span class="sd">    """</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ptr</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">=</span> <span class="n">ptr</span>
@@ -304,43 +304,14 @@
         <span class="k">return</span> <span class="n">result</span></div>
 
 
-<div class="viewcode-block" id="State.freeze">
-<a class="viewcode-back" href="../../docs/runnable.html#tract.state.State.freeze">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">freeze</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"FrozenState"</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""Freeze the state into an immutable ``FrozenState`` snapshot."""</span>
+<div class="viewcode-block" id="State.clone">
+<a class="viewcode-back" href="../../docs/runnable.html#tract.state.State.clone">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clone</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"State"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Return an independent copy of this state, which carries on from the same point of the stream."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
-        <span class="n">frozen</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_state_freeze</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">frozen</span><span class="p">)))</span>
-        <span class="k">return</span> <span class="n">FrozenState</span><span class="p">(</span><span class="n">frozen</span><span class="p">)</span></div>
-</div>
-
-
-<div class="viewcode-block" id="FrozenState">
-<a class="viewcode-back" href="../../docs/runnable.html#tract.state.FrozenState">[docs]</a>
-<span class="k">class</span><span class="w"> </span><span class="nc">FrozenState</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    A frozen (immutable) snapshot of a stateful model's state.</span>
-
-<span class="sd">    Can be unfrozen back into a mutable ``State`` with :meth:`unfreeze`.</span>
-<span class="sd">    """</span>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ptr</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">=</span> <span class="n">ptr</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="fm">__del__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_frozen_state_destroy</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">)))</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">_valid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">"invalid frozen state (maybe already destroyed ?)"</span><span class="p">)</span>
-
-<div class="viewcode-block" id="FrozenState.unfreeze">
-<a class="viewcode-back" href="../../docs/runnable.html#tract.state.FrozenState.unfreeze">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">unfreeze</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">State</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""Restore a mutable ``State`` from this frozen snapshot."""</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
-        <span class="n">state</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_frozen_state_unfreeze</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">state</span><span class="p">)))</span>
-        <span class="k">return</span> <span class="n">State</span><span class="p">(</span><span class="n">state</span><span class="p">)</span></div>
+        <span class="n">clone</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_state_clone</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">clone</span><span class="p">)))</span>
+        <span class="k">return</span> <span class="n">State</span><span class="p">(</span><span class="n">clone</span><span class="p">)</span></div>
 </div>
 
 </pre></div>

@@ -265,8 +265,9 @@ call <a class="reference internal" href="#tract.runtime.Runtime.prepare" title="
 
 <dl class="py method">
 <dt class="sig sig-object py" id="tract.runtime.Runtime.prepare">
-<span class="sig-name descname"><span class="pre">prepare</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="model.html#tract.model.Model" title="tract.model.Model"><span class="pre">Model</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#tract.runnable.Runnable" title="tract.runnable.Runnable"><span class="pre">Runnable</span></a></span></span><a class="reference internal" href="../_modules/tract/runtime.html#Runtime.prepare"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.runtime.Runtime.prepare" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">prepare</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="model.html#tract.model.Model" title="tract.model.Model"><span class="pre">Model</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">RunOptions</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#tract.runnable.Runnable" title="tract.runnable.Runnable"><span class="pre">Runnable</span></a></span></span><a class="reference internal" href="../_modules/tract/runtime.html#Runtime.prepare"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.runtime.Runtime.prepare" title="Link to this definition">¶</a></dt>
 <dd><p>Prepare a model for execution on the Runtime.</p>
+<p><code class="docutils literal notranslate"><span class="pre">options</span></code> is a <code class="xref py py-class docutils literal notranslate"><span class="pre">RunOptions</span></code> or the JSON for one.</p>
 <p>NB: The passed model is invalidated by this call.</p>
 </dd></dl>
 
@@ -363,7 +364,7 @@ perform inference.</p>
 <p>Stateful models maintain internal buffers between calls to <a class="reference internal" href="#tract.state.State.run" title="tract.state.State.run"><code class="xref py py-meth docutils literal notranslate"><span class="pre">run()</span></code></a>
 (e.g. recurrent networks, pulsed convolutions). A <code class="docutils literal notranslate"><span class="pre">State</span></code> is created by
 <code class="docutils literal notranslate"><span class="pre">Runnable.spawn_state()</span></code> and can be called repeatedly with successive
-input chunks. Use <a class="reference internal" href="#tract.state.State.freeze" title="tract.state.State.freeze"><code class="xref py py-meth docutils literal notranslate"><span class="pre">freeze()</span></code></a> to snapshot the state for later reuse.</p>
+input chunks. Use <a class="reference internal" href="#tract.state.State.clone" title="tract.state.State.clone"><code class="xref py py-meth docutils literal notranslate"><span class="pre">clone()</span></code></a> to fork a stream.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="tract.state.State.input_count">
 <span class="sig-name descname"><span class="pre">input_count</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="reference internal" href="../_modules/tract/state.html#State.input_count"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.state.State.input_count" title="Link to this definition">¶</a></dt>
@@ -383,22 +384,9 @@ input chunks. Use <a class="reference internal" href="#tract.state.State.freeze"
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="tract.state.State.freeze">
-<span class="sig-name descname"><span class="pre">freeze</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#tract.state.FrozenState" title="tract.state.FrozenState"><span class="pre">FrozenState</span></a></span></span><a class="reference internal" href="../_modules/tract/state.html#State.freeze"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.state.State.freeze" title="Link to this definition">¶</a></dt>
-<dd><p>Freeze the state into an immutable <code class="docutils literal notranslate"><span class="pre">FrozenState</span></code> snapshot.</p>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="tract.state.FrozenState">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">tract.state.</span></span><span class="sig-name descname"><span class="pre">FrozenState</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ptr</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/tract/state.html#FrozenState"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.state.FrozenState" title="Link to this definition">¶</a></dt>
-<dd><p>A frozen (immutable) snapshot of a stateful model’s state.</p>
-<p>Can be unfrozen back into a mutable <code class="docutils literal notranslate"><span class="pre">State</span></code> with <a class="reference internal" href="#tract.state.FrozenState.unfreeze" title="tract.state.FrozenState.unfreeze"><code class="xref py py-meth docutils literal notranslate"><span class="pre">unfreeze()</span></code></a>.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="tract.state.FrozenState.unfreeze">
-<span class="sig-name descname"><span class="pre">unfreeze</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#tract.state.State" title="tract.state.State"><span class="pre">State</span></a></span></span><a class="reference internal" href="../_modules/tract/state.html#FrozenState.unfreeze"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.state.FrozenState.unfreeze" title="Link to this definition">¶</a></dt>
-<dd><p>Restore a mutable <code class="docutils literal notranslate"><span class="pre">State</span></code> from this frozen snapshot.</p>
+<dt class="sig sig-object py" id="tract.state.State.clone">
+<span class="sig-name descname"><span class="pre">clone</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#tract.state.State" title="tract.state.State"><span class="pre">State</span></a></span></span><a class="reference internal" href="../_modules/tract/state.html#State.clone"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.state.State.clone" title="Link to this definition">¶</a></dt>
+<dd><p>Return an independent copy of this state, which carries on from the same point of the stream.</p>
 </dd></dl>
 
 </dd></dl>
@@ -493,11 +481,7 @@ input chunks. Use <a class="reference internal" href="#tract.state.State.freeze"
 <li><a class="reference internal" href="#tract.state.State.input_count"><code class="docutils literal notranslate"><span class="pre">State.input_count()</span></code></a></li>
 <li><a class="reference internal" href="#tract.state.State.output_count"><code class="docutils literal notranslate"><span class="pre">State.output_count()</span></code></a></li>
 <li><a class="reference internal" href="#tract.state.State.run"><code class="docutils literal notranslate"><span class="pre">State.run()</span></code></a></li>
-<li><a class="reference internal" href="#tract.state.State.freeze"><code class="docutils literal notranslate"><span class="pre">State.freeze()</span></code></a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#tract.state.FrozenState"><code class="docutils literal notranslate"><span class="pre">FrozenState</span></code></a><ul>
-<li><a class="reference internal" href="#tract.state.FrozenState.unfreeze"><code class="docutils literal notranslate"><span class="pre">FrozenState.unfreeze()</span></code></a></li>
+<li><a class="reference internal" href="#tract.state.State.clone"><code class="docutils literal notranslate"><span class="pre">State.clone()</span></code></a></li>
 </ul>
 </li>
 </ul>
