@@ -9,6 +9,79 @@
 
 For normal usage we recommend adopting the **`tract` facade crate** (the public API at `api/rs`) instead of wiring `tract-core`, `tract-nnef`, `tract-onnx`, `tract-pulse`, `tract-cuda`, `tract-metal`, etc. directly. The facade exposes one stable surface — `nnef()`, `onnx()`, `runtime_for_name("cpu" | "gpu" | "gpu-or-cpu" | "cuda" | "metal" | ...)`, plus `Model`, `Runnable`, `State`, `Tensor`, `TDim`, and a `SetSymbols` transform builder — with all the backends curated behind it. `impl_ndarray_interop!()` (0.23.0-dev.5) keeps `ndarray` interop opt-in without leaking an `ndarray` version into the public API. Downstream code that pinned `tract-core` + `tract-onnx` directly can usually drop those deps in favour of `tract = "0.23"` and `use tract::prelude::*;`. Examples are now organised around this facade — see `examples/onnx-mobilenet-v2`, `examples/nnef-mobilenet-v2`, and `examples/causal_llm`.
 
+# 0.23.11 - unreleased
+
+### Mixture of experts
+
+- **Routed MoE ops in any weight format.** `RouteSelect`, `RoutedLinear` and `RoutedCombine` replace the Q4_0-only routed matmul: route selection with softmax, softmax-over-top-k, sigmoid and `sigmoid_norm` gates, per-expert projections over plain, f16, Q4_0 and Q2_0_T weights, and the weighted combine, with SwiGLU, clamped SwiGLU and `relu2` expert activations. On the CPU, block-quantized experts run through per-expert plans. `MoeFfn` lowers through them on every backend.
+- **CUDA, Metal and wgpu run the whole MoE block on the device**: top-k route selection, GEMVs for decode-sized route lists, sorted tiled matmuls for prefill, a fused gate/up pair kernel for single-token decode, expert bias applied in the routed outputs, and one weight-format enum (`GpuWeightFormat`) shared by the dense and routed GGML kernels of all three backends. (Metal routing, expert kernels and fusions largely contributed by Julien Balian.)
+
+### Attention and recurrent ops
+
+- **Sdpa carries per-head attention sinks**, in the core op, in NNEF and on Metal, vector and prefill paths. Opt-in transforms recognize split-half rotary graphs as ApplyRope, and grouped-query, multi-head and split-QK (sink) attention graphs as Sdpa. (Contributed by Julien Balian.)
+- **Mamba-2:** `Mamba2Recurrent`, the Mamba-2 state-space recurrence, on the CPU, CUDA, Metal and wgpu; `CausalConv1dUpdate` takes an optional bias, on every backend.
+- Fixes: Metal's MLX attention indexed batched additive masks wrongly, and now accepts masks with symbolic dimensions (contributed by Julien Balian); CUDA flash attention honours a mask broadcast along the query axis; Metal softmax stays finite on rows masked with `-inf`.
+
+### GPU
+
+- **More ops on the device:** TopK over the last axis (CUDA, Metal, wgpu), ArgMax and ArgMin (CUDA, Metal), LogSoftmax (CUDA, Metal, wgpu), Tile and edge-mode Pad as shared tract-gpu copy ops, pools in every data format on Metal and wgpu, 1D transposed convolutions as a matmul on Metal, broadcast matmul batches the Metal GEMMs cannot take. Softmax rows run across several simdgroups on Metal, in one pass (split over several blocks for long rows) on CUDA, one workgroup per row on wgpu; a multi-axis softmax stays on the CPU.
+- **Metal submission is bounded:** at most `TRACT_METAL_MAX_IN_FLIGHT` (8) command buffers are outstanding, `TRACT_METAL_COMMIT_EVERY_N_DISPATCHES` submits by kernel launches, and an asynchronous command failure is reported instead of lost. Shape-only host branches no longer round-trip through the device. (Contributed by Julien Balian.)
+- Fix: the Metal and CUDA gather and gather_nd kernels read out of bounds on an out-of-range index, and the wgpu ones clamped or aliased it. Every device kernel now writes 0 for an index or coordinate outside its axis, NaN included (the CPU ops still reject it).
+- Fix: cloning a GPU state shared the device buffers of its delay, pulse pad, deconv delay, KV cache and ring states, so the clone wrote into the original's buffers.
+- KV caches carrying fused input axis ops are windowed on the device; Metal holds a pulsed attention window as a ring its GEMM turns.
+
+### WebGPU (wgpu)
+
+- **Cooperative-matrix GEMM and 3x3 convolution**, natively and in the browser, behind `TRACT_WGPU_SUBGROUPS` (experimental, with subgroup GEMVs). (Largely contributed by Ckristian Zoli.)
+- **`TRACT_WGPU_ALLOW_F16_ACCUMULATION`** lets f16 convolutions and matmuls accumulate in f16 in the blocked, split-K and direct kernels; f32 accumulation stays the default. (Contributed by Ckristian Zoli.)
+- **Faster kernels:** vec4 lanes in the tiled GEMM core and the per-pixel convolution, vec4 staging of contiguous operands, register-blocked depthwise and a channel-walking channels-last depthwise (3x3 and 5x5), direct 3x3 tiled over two output rows with packed weights, split-K for long reductions on small maps, lane-parallel GEMVs (with vec4 loads for strided activations, and taking weight-first skinny products), coalesced skinny matmuls, Q4 row walking for few-row activations, the block-quant GEMV for a single transposed row, and a tiled block-quant matmul for f16 activations, past rank 3. Bilinear resize writes straight into the concat that follows, trailing f16 means fuse, and `Iff` of a float comparison is one device op. (Largely contributed by Ckristian Zoli.)
+- f16 matmuls computed in f32 run on the device; the tanh of the f16 and fast GELU paths is clamped.
+
+### CPU / linalg
+
+- **Lazy packing:** large activation operands are packed one panel at a time inside the matmul (`LazyPackedInput`, from `TRACT_LAZY_PACK_MIN_BYTES`), and lazy im2col reads padded convolutions' input unpadded, gathering runs of points with vector loads.
+- **f16 on aarch64:** f16 depthwise kernels with a vectorised tail, f16 softmax through the f32 kernels, f16 nearest upsample on the plane-walking path, f16 max pooling as ordered integers, 16x8 tiles stored to column-contiguous outputs, short-K f16 products kept off AMX, and a packed f16 SiLU table lookup.
+- x86: an f16-weights path for the AVX-512 128x1 mat-vec kernel and the 16x1 kernel kept up to m = 64 off Intel (contributed by nemec.jiri); panel extractors targeting the FMA kernels' f32 packing. aarch64: a NEON panel extractor from Q2_0_T to f32.
+- By-scalar and unicast Div kernels; heavy products below the MMM panel gate are threaded; max pooling splits row spans across threads and folds kernel rows then columns; a matrix kernel behind an extractor beats a GEMV for n > 1.
+- Fixes: AMX kernels overwrote instead of accumulating into an existing tile; the SME `sme_qmmm_i32_32x32` add_unicast read its operand at the wrong item size, the AVX-512 16x1 kernel did not zero its partial sums, and `pick_by_shape` could pick a mat-vec tile that padded m to twice its size (contributed by nemec.jiri). Assembly kernels are marked as not needing an executable stack.
+
+### Core
+
+- **Layout propagation:** MaxPool, SumPool, Deconv, NearestUpsample, Resize, Downsample and Iff carry channel moves and batch-axis changes, and an op can hand new values for its constant inputs on an axis change. `TRACT_DISABLE_DEPTHWISE_CHANNEL_LAST` stops depthwise convolutions from asking for a channel-last layout.
+- **Symbolic shapes:** Pow evaluates on symbolic dimensions, Max and Min are bounded, ONNX Pad accepts symbolic constant-mode amounts, StridedSlice takes ONNX open-ended sentinels in symbolic ends, depthwise convolutions handle symbolic shapes, and ONNX reshape checks compare expanded polynomials.
+- The tanh GELU is detected from its Tanh, and an expanded hard-swish folds into one op (contributed by Ckristian Zoli). The float precision transforms gain `keep_io`, and keep Resize scales at their declared type (contributed by Ckristian Zoli). A constant quantized matmul operand is summed at codegen instead of at run time (contributed by Øystein Krog). TopK orders totally, NaN after every number. Weights whose k is not whole Q4 blocks stay unquantized. Concat einsums with narrow slices stay whole (`TRACT_CONCAT_EINSUM_MIN_SLICE`).
+- tract-data: `TensorView` is split into a byte-slice `TensorView` and `TensorViewMut`, its slice and element accesses are bounded to the tensor's storage, and unsafe code current Rust no longer needs is gone.
+- Fixes: EinSum dropped a broadcast its output depends on; Conv's data-input rules moved the bias axis (contributed by Amlandeep Bhadra); a product assertion could prove facts about its symbols.
+
+### Streaming / pulse
+
+- Edge padding is absorbed into the convolution it feeds. `tract compare --stream` streams whole Blockify chunks.
+
+### NNEF / ONNX / TFLite
+
+- ONNX fixes: CELU omitted its outer alpha factor (contributed by Nakamura); negative ScatterND and GatherND coordinates were not normalized, Softplus overflowed for large finite inputs, negative Pad entries were not cropped, Resize coordinate transforms ignored output lengths and singleton rules, a division before round-to-even could cross an integer boundary, and Selu ignored opset-specific defaults (contributed by JarvisDing-sdu). EinSum handles an ellipsis missing from an input or appearing only in the output (contributed by sohailshk).
+- NNEF counts negative slice bounds from the axis end, and loads `tract_core_topk`'s k as i64.
+- TFLite reads and writes TopK as TOPK_V2, ArgMin as ARG_MIN (and reads ARG_MAX/ARG_MIN back), NEG, TILE, edge-mode Pad and RSQRT; reads SQUARED_DIFFERENCE (contributed by Simon Elsbrock).
+
+### API
+
+- **`prepare_with_options`** takes `RunOptions` (a serde struct or its JSON), currently memory sizing hints for GPU arenas, in Rust, C (`tract_runtime_prepare_with_options`) and Python. (Contributed by Julien Balian.)
+- `Nnef::load_read` loads a model from any reader, under `unstable-load-read`.
+- Python: `State.clone`; `State.freeze` and `FrozenState` are removed.
+
+### CLI
+
+- `layout-report` shows where a model could switch convolution layout.
+
+### Examples and web demos
+
+- New examples: Kyutai's Moshi (full duplex over WAVs or live, with the mic on another machine, `--q4`), Kyutai's Mimi codec streamed a frame at a time, Voxtral Mini 4B Realtime streaming transcription, NVIDIA NemotronLabs VoiceChat, Supertonic text to speech in the browser, Bonsai Image in the browser and natively (contributed by Ckristian Zoli), and Bezier Piano, a webcam instrument whose hand tracking runs MediaPipe's palm detector and hand landmark model on WebGPU or the wasm CPU (contributed by Ckristian Zoli).
+- Pixel Lab: masks follow the current camera frame, f16 RVM, MediaPipe and MODNet, new models, tract's GPU device shared with the compositor, and cooperative matrices where the browser has them. (Contributed by Ckristian Zoli.)
+
+### Build and dependencies
+
+- wgpu 30.0.2 (a mapped-buffer use-after-free on device loss in 30.0.1), wasm-bindgen 0.2.130, url bump, routine dependency bumps. proxy-sys builds bindgen without prettyplease. ARM64 Windows builds no longer hard-code `clang` when `clang-cl` is in use (contributed by Paul Mabileau). Release SBOMs are built from the tract binary rather than the checkout (contributed by Matthew Charles Busel).
+
 # 0.23.10 - 2026-11-05
 
 ### Web demos
