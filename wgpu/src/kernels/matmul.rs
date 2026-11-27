@@ -197,6 +197,12 @@ fn lane_parallel_once_swapped(
         && a_k_stride == 1)
 }
 
+/// Lanes reducing one column of the lane-parallel GEMV: enough steps along `k`
+/// per lane to keep its loads in flight, enough lanes for a long `k` to spread.
+fn gemv_kc_lanes(k: usize) -> usize {
+    if k <= 2048 { 16 } else { 32 }
+}
+
 /// Whether the lane-parallel `gemv_kc` kernel applies: `b` contiguous along `k`
 /// with a few rows of `a` and `k` of at least `MATMUL_GEMV_KC_MIN_K`, so a slice of
 /// lanes walks it side by side for one output column — or, an `m = 1` product too thin to fill the plain kernel's
@@ -468,9 +474,10 @@ fn wgpu_matmul_dispatch_impl(
         let gemv_n_name = if gemv_n_v4 { "matmul_gemv_n_v4" } else { "matmul_gemv_n" };
         let tiled = tiled_applies(prefix, m, k, n);
         let tile_m = tile_rows(m);
+        let kc_shape = if gemv_kc { (m, gemv_kc_lanes(k)) } else { (0, 0) };
         let pipeline = if gemv {
             q.context().chain_pipeline(
-                (gemv_name, dt, epilogue, extras.len()),
+                (gemv_name, dt, kc_shape, epilogue, extras.len()),
                 layout,
                 EntryPoint::typed(gemv_name, dt),
                 || {
@@ -485,7 +492,7 @@ fn wgpu_matmul_dispatch_impl(
                     } else {
                         GemvVariant::Staged
                     };
-                    matmul_gemv_module_for_layout(dt, epilogue, extras.len(), variant)
+                    matmul_gemv_module_for_layout(dt, epilogue, extras.len(), variant, kc_shape)
                 },
             )?
         } else if gemv_n {
@@ -552,7 +559,7 @@ fn wgpu_matmul_dispatch_impl(
             let columns = if gemv_small {
                 MATMUL_GEMV_SMALL_COLS
             } else if gemv_kc {
-                MATMUL_GEMV_KC_COLS
+                MATMUL_GEMV_KC_THREADS / kc_shape.1 as u32
             } else {
                 MATMUL_GEMV_WG
             };
@@ -596,10 +603,11 @@ pub const MATMUL_BLOCKED_WG: u32 = 192;
 /// Columns one `m = 1` workgroup owns, and the `k` slice it stages for them.
 pub const MATMUL_GEMV_WG: u32 = 64;
 const MATMUL_GEMV_SMALL_COLS: u32 = 8;
-/// Columns one workgroup of the lane-parallel GEMV kernel owns, each reduced by
-/// `MATMUL_GEMV_KC_LANES` lanes.
-const MATMUL_GEMV_KC_COLS: u32 = 8;
-const MATMUL_GEMV_KC_LANES: u32 = 32;
+/// Threads of one lane-parallel GEMV workgroup, split into columns of
+/// [`gemv_kc_lanes`] lanes each.
+const MATMUL_GEMV_KC_THREADS: u32 = 64;
+/// Weight loads each lane of the vec4 lane-parallel GEMV issues per step.
+const MATMUL_GEMV_KC_UNROLL: usize = 4;
 /// Rows of `a` the lane-parallel GEMV kernel serves, each `b` load feeding all of them.
 const MATMUL_GEMV_KC_MAX_M: usize = 8;
 /// Shortest `k` the lane-parallel GEMV kernel takes for a `b` contiguous along `k`: below it
@@ -748,7 +756,7 @@ fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 /// and each then walks its own column. Same `Params`, strides and epilogue as
 /// [`matmul_module`]. `k` past the last partial slice is padded with zeros.
 pub fn matmul_gemv_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
-    matmul_gemv_module_for_layout(dt, epilogue, extras, GemvVariant::Staged)
+    matmul_gemv_module_for_layout(dt, epilogue, extras, GemvVariant::Staged, (0, 0))
 }
 
 fn matmul_gemv_module_for_layout(
@@ -756,6 +764,7 @@ fn matmul_gemv_module_for_layout(
     epilogue: &[ChainStep],
     extras: usize,
     variant: GemvVariant,
+    (rows, lanes): (usize, usize),
 ) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
@@ -789,12 +798,11 @@ fn matmul_gemv_module_for_layout(
     };
     let body = if variant == GemvVariant::Small {
         matmul_gemv_small_body(t, suf, &epilogue)
-    } else if variant == GemvVariant::LaneParallel {
-        matmul_gemv_kc_body(t, suf, &epilogue, false)
-    } else if variant == GemvVariant::LaneParallelVec4 {
-        matmul_gemv_kc_body(t, suf, &epilogue, true)
-    } else if variant == GemvVariant::LaneParallelVec4B {
-        matmul_gemv_kc4b_body(t, suf, &epilogue)
+    } else if matches!(
+        variant,
+        GemvVariant::LaneParallel | GemvVariant::LaneParallelVec4 | GemvVariant::LaneParallelVec4B
+    ) {
+        matmul_gemv_kc_body(t, suf, &epilogue, variant, rows, lanes)
     } else {
         format!(
             r#"var<workgroup> avec: array<f32, {wg}>;
@@ -896,70 +904,113 @@ struct Params {{
     s
 }
 
-/// Product of up to `MATMUL_GEMV_KC_MAX_M` rows of `a` by `b`: each column is
-/// reduced by a slice of lanes walking `k` side by side — consecutive addresses
-/// of `b` when it is contiguous along `k`, as a linear layer's weight is — then
-/// summed across the slice in workgroup memory. When `k` is a multiple of 4 and both
-/// operands read as `vec4`s along it, each lane loads four `k` steps at a time. Accumulates
-/// in f32. Same `Params`, strides and epilogue as [`matmul_module`].
-/// [`matmul_gemv_kc_body`] with `b` read as `vec4`s along `k` and `a`, which may be
-/// strided along `k` (a transposed activation), as four scalars per step.
-fn matmul_gemv_kc4b_body(t: &str, suf: &str, epilogue: &str) -> String {
-    let walk_k = format!(
-        r#"for (var k4 = lane; k4 < params.k / 4u; k4 += {lanes}u) {{
-            let bv = vec4<f32>(b[b_base / 4u + k4]);
-            for (var r = 0u; r < params.m; r++) {{
-                let ai = a_i + r * a_m_s + k4 * 4u * a_k_s;
-                let av = vec4<f32>(f32(a[ai]), f32(a[ai + a_k_s]), f32(a[ai + 2u * a_k_s]), f32(a[ai + 3u * a_k_s]));
-                acc[r] += dot(av, bv);
-            }}
-        }}"#,
-        lanes = MATMUL_GEMV_KC_LANES
-    );
-    matmul_gemv_kc_body_walking(t, suf, epilogue, "matmul_gemv_kc4b", &walk_k)
-}
-
-fn matmul_gemv_kc_body(t: &str, suf: &str, epilogue: &str, vec4: bool) -> String {
-    let entry = if vec4 { "matmul_gemv_kc4" } else { "matmul_gemv_kc" };
-    let walk_k = if vec4 {
-        format!(
-            r#"for (var k4 = lane; k4 < params.k / 4u; k4 += {lanes}u) {{
-            let bv = vec4<f32>(b[b_base / 4u + k4]);
-            for (var r = 0u; r < params.m; r++) {{
-                acc[r] += dot(vec4<f32>(a[(a_i + r * a_m_s) / 4u + k4]), bv);
-            }}
-        }}"#,
-            lanes = MATMUL_GEMV_KC_LANES
-        )
-    } else {
-        format!(
-            r#"for (var k = lane; k < params.k; k += {lanes}u) {{
-            let bv = f32(b[b_base + k * b_k_s]);
-            for (var r = 0u; r < params.m; r++) {{
-                acc[r] += f32(a[a_i + r * a_m_s + k * a_k_s]) * bv;
-            }}
-        }}"#,
-            lanes = MATMUL_GEMV_KC_LANES
-        )
-    };
-    matmul_gemv_kc_body_walking(t, suf, epilogue, entry, &walk_k)
-}
-
-fn matmul_gemv_kc_body_walking(
+/// Product of `rows` (up to `MATMUL_GEMV_KC_MAX_M`) rows of `a` by `b`, the
+/// row count baked into the shader: each column is reduced by `lanes` lanes
+/// walking `k` side by side — consecutive addresses of `b` when it is contiguous
+/// along `k`, as a linear layer's weight is — each lane keeping one accumulator
+/// per row, then all rows are summed across the lanes in one pass through
+/// workgroup memory. `LaneParallelVec4` reads both operands as `vec4`s along `k`,
+/// `LaneParallelVec4B` reads `b` so and `a`, which may be strided along `k` (a
+/// transposed activation), as four scalars per step; both issue
+/// [`MATMUL_GEMV_KC_UNROLL`] weight loads per step. Accumulates in f32. Same
+/// `Params`, strides and epilogue as [`matmul_module`].
+fn matmul_gemv_kc_body(
     t: &str,
     suf: &str,
     epilogue: &str,
-    entry: &str,
-    walk_k: &str,
+    variant: GemvVariant,
+    rows: usize,
+    lanes: usize,
 ) -> String {
-    let cols = MATMUL_GEMV_KC_COLS;
-    let lanes = MATMUL_GEMV_KC_LANES;
-    let max_m = MATMUL_GEMV_KC_MAX_M;
-    let wg = cols * lanes;
+    let entry = match variant {
+        GemvVariant::LaneParallelVec4 => "matmul_gemv_kc4",
+        GemvVariant::LaneParallelVec4B => "matmul_gemv_kc4b",
+        _ => "matmul_gemv_kc",
+    };
+    let wg = MATMUL_GEMV_KC_THREADS as usize;
+    let cols = wg / lanes;
+    let row_bases: String = (0..rows)
+        .map(|r| match variant {
+            GemvVariant::LaneParallelVec4 => {
+                format!("        let ar{r} = (a_i + {r}u * a_m_s) / 4u;\n")
+            }
+            _ => format!("        let ar{r} = a_i + {r}u * a_m_s;\n"),
+        })
+        .collect();
+    let a_at = |r: usize, k4: &str| match variant {
+        GemvVariant::LaneParallelVec4 => format!("vec4<f32>(a[ar{r} + {k4}])"),
+        _ => format!("a4(ar{r} + ({k4}) * 4u * a_k_s, a_k_s)"),
+    };
+    let walk_k = if variant == GemvVariant::LaneParallel {
+        let accumulate: String = (0..rows)
+            .map(|r| format!("            acc{r} += f32(a[ar{r} + k * a_k_s]) * bv;\n"))
+            .collect();
+        format!(
+            "        for (var k = lane; k < params.k; k += {lanes}u) {{\n            let bv = f32(b[b_base + k * b_k_s]);\n{accumulate}        }}\n"
+        )
+    } else {
+        let unroll = MATMUL_GEMV_KC_UNROLL;
+        let loads: String = (0..unroll)
+            .map(|u| {
+                format!("            let w{u} = vec4<f32>(b[b_base / 4u + k4 + {}u]);\n", u * lanes)
+            })
+            .collect();
+        let accumulate: String = (0..rows)
+            .map(|r| {
+                let dots: Vec<String> = (0..unroll)
+                    .map(|u| format!("dot(w{u}, {})", a_at(r, &format!("k4 + {}u", u * lanes))))
+                    .collect();
+                format!("            acc{r} += {};\n", dots.join(" + "))
+            })
+            .collect();
+        let tail: String = (0..rows)
+            .map(|r| format!("            acc{r} += dot(w, {});\n", a_at(r, "k4")))
+            .collect();
+        format!(
+            r#"        let k4n = params.k / 4u;
+        var k4 = lane;
+        for (; k4 + {last}u < k4n; k4 += {step}u) {{
+{loads}{accumulate}        }}
+        for (; k4 < k4n; k4 += {lanes}u) {{
+            let w = vec4<f32>(b[b_base / 4u + k4]);
+{tail}        }}
+"#,
+            last = (unroll - 1) * lanes,
+            step = unroll * lanes,
+        )
+    };
+    let a4 = if variant == GemvVariant::LaneParallelVec4B {
+        "fn a4(i: u32, s: u32) -> vec4<f32> {\n    return vec4<f32>(f32(a[i]), f32(a[i + s]), f32(a[i + 2u * s]), f32(a[i + 3u * s]));\n}\n\n"
+    } else {
+        ""
+    };
+    let init: String = (0..rows).map(|r| format!("    var acc{r} = 0.0;\n")).collect();
+    let spill: String =
+        (0..rows).map(|r| format!("    partial[{}u + lid.x] = acc{r};\n", r * wg)).collect();
+    let fold: String = (0..rows)
+        .map(|r| {
+            format!("            partial[{o}u + lid.x] += partial[{o}u + lid.x + s];\n", o = r * wg)
+        })
+        .collect();
+    let stores: String = (0..rows)
+        .map(|r| {
+            format!(
+                r#"        {{
+            let oe = o_i - params.off_out + {r}u * o_m_s + col * o_n_s;
+            var v = {t}(partial[{o}u + lid.x]);
+{epilogue}
+            outp[o_i + {r}u * o_m_s + col * o_n_s] = v;
+        }}
+"#,
+                o = r * wg
+            )
+        })
+        .collect();
+    let partial_len = rows * wg;
     format!(
-        r#"var<workgroup> partial: array<f32, {wg}>;
+        r#"var<workgroup> partial: array<f32, {partial_len}>;
 
-@compute @workgroup_size({wg})
+{a4}@compute @workgroup_size({wg})
 fn {entry}_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
     let tiles_n = (params.n + {cols}u - 1u) / {cols}u;
     let tile = wid.y * {GRID_LIMIT}u + wid.x;
@@ -988,31 +1039,20 @@ fn {entry}_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgrou
     let o_n_s = select(at8(params.out_s0, params.out_s1, 7u), at8(params.out_s0, params.out_s1, 6u), params.tc != 0u);
     let a_m_s = select(at8(params.a_s0, params.a_s1, 6u), at8(params.a_s0, params.a_s1, 7u), params.ta != 0u);
     let o_m_s = select(at8(params.out_s0, params.out_s1, 6u), at8(params.out_s0, params.out_s1, 7u), params.tc != 0u);
-    var acc: array<f32, {max_m}>;
-    for (var r = 0u; r < {max_m}u; r++) {{ acc[r] = 0.0; }}
-    if (col < params.n) {{
+{init}    if (col < params.n) {{
         let b_base = b_i + col * b_n_s;
-        {walk_k}
-    }}
-    for (var r = 0u; r < params.m; r++) {{
-        partial[lid.x] = acc[r];
-        workgroupBarrier();
-        for (var s = {lanes}u / 2u; s > 0u; s = s / 2u) {{
-            if (lane < s) {{
-                partial[lid.x] += partial[lid.x + s];
-            }}
-            workgroupBarrier();
-        }}
-        if (lane == 0u && col < params.n) {{
-            let oe = o_i - params.off_out + r * o_m_s + col * o_n_s;
-            var v = {t}(partial[lid.x]);
-{epilogue}
-            outp[o_i + r * o_m_s + col * o_n_s] = v;
-        }}
+{row_bases}{walk_k}    }}
+{spill}    workgroupBarrier();
+    for (var s = {half}u; s > 0u; s = s / 2u) {{
+        if (lane < s) {{
+{fold}        }}
         workgroupBarrier();
     }}
+    if (lane == 0u && col < params.n) {{
+{stores}    }}
 }}
-"#
+"#,
+        half = lanes / 2
     )
 }
 
@@ -1838,6 +1878,10 @@ mod tests {
             (3, 3, 132, 9, true, false, false, false),
             (1, 4, 128, 21, true, false, true, false),
             (1, 4, 256, 13, true, false, false, true),
+            (1, 6, 2052, 13, false, false, false, true),
+            (2, 8, 3000, 11, false, false, false, false),
+            (1, 7, 4100, 9, true, false, false, false),
+            (1, 3, 2051, 13, false, false, false, false),
         ] {
             let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
             let a_shape = [prefix, if ta { k } else { m }, if ta { m } else { k }];
