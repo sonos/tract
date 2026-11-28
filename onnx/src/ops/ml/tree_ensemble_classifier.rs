@@ -303,6 +303,22 @@ impl Expansion for TreeEnsembleClassifier {
                 &[scores[0], base],
             )?;
         }
+        let binary_winners = if self.binary_result_layout && self.class_labels.len() == 2 {
+            let leaves = self.ensemble.data.leaves.try_as_plain_ram()?.as_slice::<u32>()?;
+            let nonnegative = leaves.chunks_exact(2).all(|leaf| f32::from_bits(leaf[1]) >= 0.);
+            let threshold = if nonnegative { 0.5f32 } else { 0. };
+            let threshold =
+                model.add_const(format!("{prefix}.threshold"), rctensor2(&[[threshold]]))?;
+            let score =
+                model.wire_node(format!("{prefix}.raw_score"), Slice::new(1, 0, 1), &scores)?;
+            Some(model.wire_node(
+                format!("{prefix}.positive"),
+                tract_core::ops::binary::TypedBinOp(tract_core::ops::logic::comp_gt(), None),
+                &[score[0], threshold],
+            )?)
+        } else {
+            None
+        };
         match self.post_transform {
             None => (),
             Some(PostTransform::Softmax) => {
@@ -320,7 +336,15 @@ impl Expansion for TreeEnsembleClassifier {
                 )?;
             }
         }
-        let processed_scores = scores.clone();
+        let winners = if let Some(winners) = binary_winners {
+            winners
+        } else {
+            model.wire_node(
+                format!("{prefix}.argmax"),
+                Reduce::new(tvec!(1), Reducer::ArgMax(false)),
+                &scores,
+            )?
+        };
         if self.binary_result_layout {
             scores = model.wire_node(
                 format!("{prefix}.binary_result_slice"),
@@ -339,11 +363,6 @@ impl Expansion for TreeEnsembleClassifier {
                 &[complement[0], scores[0]],
             )?;
         }
-        let winners = model.wire_node(
-            format!("{prefix}.argmax"),
-            Reduce::new(tvec!(1), Reducer::ArgMax(false)),
-            &processed_scores,
-        )?;
         let reduced = model.wire_node(
             format!("{prefix}.rm_axis"),
             tract_core::ops::change_axes::AxisOp::Rm(1),
