@@ -401,12 +401,13 @@ pub fn de_relu6(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         &[input, six],
         op.ctx.target.outlet_fact(input)?.datum_type,
     )?;
-    wire_with_rank_broadcast(
+    let output = wire_with_rank_broadcast(
         format!("{}.relu6", op.prefix),
         op.ctx.target,
         core::math::min(),
         &wires,
-    )
+    )?;
+    wire_cast(op.prefix, op.ctx.target, &output, op.output_facts[0].datum_type)
 }
 
 /// `x` where `x >= 0`, `x * alpha` elsewhere. `alpha` is broadcast against `x` the way TFLite does.

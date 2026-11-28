@@ -27,16 +27,23 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::LOG, |op| deser(op, ln()));
     reg.reg_to_tract(BuiltinOperator::LOGICAL_NOT, |op| deser(op, not()));
     reg.reg_to_tract(BuiltinOperator::SIN, |op| deser(op, sin()));
-    reg.reg_to_tract(BuiltinOperator::LOGISTIC, |op| deser(op, sigmoid()));
+    reg.reg_to_tract(BuiltinOperator::LOGISTIC, |op| deser_with_output_type(op, sigmoid()));
     reg.reg_to_tract(BuiltinOperator::NEG, |op| deser(op, neg()));
     reg.reg_to_tract(BuiltinOperator::SQRT, |op| deser(op, sqrt()));
     reg.reg_to_tract(BuiltinOperator::SQUARE, |op| deser(op, square()));
     reg.reg_to_tract(BuiltinOperator::RSQRT, |op| deser(op, rsqrt()));
-    reg.reg_to_tract(BuiltinOperator::TANH, |op| deser(op, tanh()));
+    reg.reg_to_tract(BuiltinOperator::TANH, |op| deser_with_output_type(op, tanh()));
 }
 
 fn deser(op: &mut DeserOp, ew: ElementWiseOp) -> TractResult<TVec<OutletId>> {
     op.ctx.target.wire_node(op.prefix, ew, op.inputs)
+}
+
+fn deser_with_output_type(op: &mut DeserOp, ew: ElementWiseOp) -> TractResult<TVec<OutletId>> {
+    let output_dt = op.output_facts[0].datum_type;
+    let input = tract_core::ops::cast::wire_cast(op.prefix, op.ctx.target, op.inputs, f32::datum_type())?;
+    let output = op.ctx.target.wire_node(op.prefix, ew, &input)?;
+    tract_core::ops::cast::wire_cast(op.prefix, op.ctx.target, &output, output_dt)
 }
 
 fn de_cast(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
