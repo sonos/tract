@@ -111,6 +111,11 @@ fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         }
         wires
     } else {
+        if let Some(encoded) = &bias.konst {
+            let values = encoded.try_as_plain_ram()?.as_slice::<i32>()?;
+            let raw = Tensor::from_shape(encoded.shape(), values)?;
+            inputs[2] = op.ctx.target.add_const(format!("{}.raw_bias", op.prefix), raw)?;
+        }
         let qp = super::linearops_quantization_suport(op, &input, &mut inputs)?;
         let axes = "BI,OI,O,,,,,,->BO".parse()?;
         let einsum = EinSum { axes, q_params: qp, operating_dt: i32::datum_type() };
