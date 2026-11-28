@@ -39,6 +39,7 @@ pub struct CommonRec {
     pub optional_y_h_output: Option<usize>,
     pub optional_y_c_output: Option<usize>,
     pub batch_first: bool,
+    pub reverse: bool,
     pub body: Box<dyn WireBody>,
 }
 
@@ -62,6 +63,7 @@ impl CommonRec {
             optional_y_h_output: outputs.next().unwrap(),
             optional_y_c_output: outputs.next().unwrap(),
 
+            reverse: pb.get_attr_opt("direction")?.unwrap_or("forward") == "reverse",
             batch_first: pb.get_attr_opt("layout")?.unwrap_or(0) == 1,
             body,
         })
@@ -98,7 +100,7 @@ impl CommonRec {
         let b_size = &x_fact.shape[1 - self.batch_first as usize];
         let h_size = &r_fact.shape[2];
 
-        let chunk = if dir == 0 { 1 } else { -1 };
+        let chunk = if dir == 0 && !self.reverse { 1 } else { -1 };
 
         let mut body = TypedModel { symbols: target.symbols.clone(), ..TypedModel::default() };
         let mut outer_inputs = vec![];
