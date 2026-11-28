@@ -2,7 +2,11 @@ name: Python gh-pages doc
 
 on:
   pull_request:
+  # Only "published": an untyped release trigger fires once per release action
+  # (created, published, released), and those parallel runs raced on the
+  # gh-pages push.
   release:
+    types: [published]
   workflow_dispatch:
 
 env:
@@ -18,6 +22,11 @@ jobs:
     if: github.repository == 'sonos/tract'
     permissions:
       contents: write
+    # Deploys push to gh-pages: serialise them (never cancel a deploy midway).
+    # PR runs only build, so they get their own per-ref group.
+    concurrency:
+      group: ${{ github.event_name == 'pull_request' && format('pydoc-{0}', github.ref) || 'gh-pages-deploy' }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,8 +69,13 @@ jobs:
           git config user.name "CI bot"
           git config user.email ci-bot@tract.rs
 
+          # A release publishes its versioned docs and refreshes dev in the
+          # same commit; other triggers only refresh dev.
           version="${STEPS_VERSION_OUTPUTS_VALUE}"
-          if [ -z "$version" ]; then
+          targets="dev"
+          if [ -n "$version" ]; then
+            targets="$version dev"
+          else
             version="dev"
           fi
 
@@ -72,9 +86,11 @@ jobs:
             git worktree add --orphan "$workdir" gh-pages
           }
 
-          # copy new build into the versioned subdirectory
-          rm -rf "$workdir/$version"
-          cp -r api/py/_build/html "$workdir/$version"
+          # copy new build into the versioned subdirectories
+          for target in $targets; do
+            rm -rf "$workdir/$target"
+            cp -r api/py/_build/html "$workdir/$target"
+          done
 
           # regenerate versions.json (mike-compatible format) from directories present
           cd "$workdir"
