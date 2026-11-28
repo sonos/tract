@@ -40,6 +40,38 @@ impl WireBody for LSTM {
         true
     }
 
+    fn fused_sequence_op(
+        &self,
+        hidden: usize,
+        has_bias: bool,
+        chunk: isize,
+        seq_len: usize,
+        emit_y: bool,
+    ) -> Option<Box<dyn TypedOp>> {
+        use tract_hir::tract_core::ops::element_wise::ElementWiseOp;
+        use tract_hir::tract_core::ops::math::Tanh;
+        use tract_hir::tract_core::ops::nn::Sigmoid;
+        let is = |op: &dyn TypedOp, sigmoid: bool| {
+            op.downcast_ref::<ElementWiseOp>()
+                .is_some_and(|ew| if sigmoid { ew.0.is::<Sigmoid>() } else { ew.0.is::<Tanh>() })
+        };
+        // LstmSeq's loop body IS LstmEpilogue, so the fused form is valid exactly
+        // where the epilogue is.
+        (seq_len >= 4 && is(&*self.f, true) && is(&*self.g, false) && is(&*self.h, false)).then(
+            || {
+                Box::new(tract_hir::tract_core::ops::lstm_seq::LstmSeq {
+                    hidden,
+                    has_bias,
+                    chunk,
+                    reset_every_turn: false,
+                    emit_y,
+                    projected: false,
+                    packed_r: None,
+                }) as Box<dyn TypedOp>
+            },
+        )
+    }
+
     #[allow(non_snake_case)]
     fn wire_body(&self, prefix: &str, body: &mut TypedModel) -> TractResult<()> {
         use tract_hir::ops::{array, math};
