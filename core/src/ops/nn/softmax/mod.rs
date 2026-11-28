@@ -391,7 +391,7 @@ fn softmax_quant_inner<D: Dimension>(
 ) {
     let (_, in_scale) = in_qp.zp_scale();
     let (scale_in_multiplier, scale_in_shift) = convert_scale_to_mult_shift(in_scale).unwrap();
-    let (_, out_scale) = out_qp.zp_scale();
+    let (output_zero, out_scale) = out_qp.zp_scale();
     let (scale_out_multiplier, scale_out_shift) = convert_scale_to_mult_shift(out_scale).unwrap();
     let shift = 26 - scale_in_shift;
 
@@ -407,9 +407,9 @@ fn softmax_quant_inner<D: Dimension>(
 
         // We scale the input to be in Q5_26
         let scaled_input_diff = if scale_in_multiplier != 0 {
-            saturating_rounding_multiply_by_pot(
-                saturating_rounding_doubling_high_mul(input_diff, scale_in_multiplier),
-                shift as i32,
+            saturating_rounding_doubling_high_mul(
+                saturating_rounding_multiply_by_pot(input_diff, shift as i32),
+                scale_in_multiplier,
             )
         } else {
             saturating_rounding_multiply_by_pot(input_diff, shift as i32)
@@ -449,6 +449,8 @@ fn softmax_quant_inner<D: Dimension>(
                 rounding_divide_by_pot(unsat_output, (8 - scale_out_shift) as i32)
             }
         };
+
+        let unsat_scaled_output = unsat_scaled_output + output_zero;
 
         // Return the final result by clipping the computed value within its range
         // and casting it to u8 in any case.

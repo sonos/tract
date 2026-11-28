@@ -211,7 +211,7 @@ fn de_softmax(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let input = args_1!(op.facts()?);
     let options = builtin!(op, builtin_options_as_softmax_options);
     ensure!(options.beta() == 1.0);
-    let quant_output_dt = Some(input.datum_type).filter(|dt| !dt.is_float());
+    let quant_output_dt = Some(op.output_facts[0].datum_type).filter(|dt| !dt.is_float());
     let softmax = Softmax { axes: tvec!(input.rank() - 1), quant_output_dt, ..Softmax::default() };
     op.ctx.target.wire_node(op.prefix, softmax, op.inputs)
 }
